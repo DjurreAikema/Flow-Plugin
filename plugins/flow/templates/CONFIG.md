@@ -22,13 +22,9 @@ The choices of this project for the `flow` workflow. The skills read this file. 
 - Coverage: <`<the command that prints the coverage of the changed lines against the base branch>` or none>
 
 ## Testing
-The automated tests of the project. The workflow guide explains each setting (`reference/WORKFLOW.md` section 7).
+The automated tests of the project. `/flow:test-plan` writes the plan (`reference/WORKFLOW.md` section 7).
 
-- Rule: <none | critical | logic>
-- Types: <none, or the list below. Keep the types that the project uses, and rename or add as needed.>
-  - unit: one function or class, without files, network or a database. <`<command>` or none>
-  - integration: code that talks to files, a database or an external service. <`<command>` or none>
-  - end-to-end: the running application, as a user uses it. <`<command>` or none>
+- Test plan: docs/workflow/TESTING.md
 
 ## Docs
 The documents that the agent reads before it plans. Write "none" for a document that the project does not have.
