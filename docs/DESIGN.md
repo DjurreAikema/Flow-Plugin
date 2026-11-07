@@ -21,11 +21,12 @@ Version 0.x of the plugin does these things:
 5. Gives extra support to two hosts: `github` and `azure-devops`. On every other host, the developer opens the pull request by hand.
 6. Works for one developer and for a team.
 7. Keeps the long-term goals of a project in a roadmap of milestones and cards, written by `/flow:roadmap` from client requests.
+8. Makes a release with `/flow:release`, by a recipe that each project writes in a setup conversation.
 
 Out of scope for now:
 
 - Extra support for GitLab, Bitbucket and other hosts. They work through the manual pull request. Add a host guide when a real project needs it.
-- Releases, version numbers, trackers, changelog fragments, and extra records such as patch notes. They are specific to a project. A project adds them as project rules, or builds a project skill for them with a task.
+- Trackers, changelog fragments, and extra records such as patch notes. They are specific to a project. A project adds them as project rules, or builds a project skill for them with a task.
 - Extension points, through which the skills of the plugin call the project skills.
 - A migration skill for projects that have the old project-skill version of the workflow.
 - An analysis of the features of an existing application. A separate plugin can write such a report, and `/flow:roadmap` reads it like any other input.
@@ -60,7 +61,7 @@ The host part is small: open a pull request, read its comments, reply. A guide p
 
 The branch guard is two git hooks. `pre-commit` refuses a commit on the base branch, and `pre-push` refuses a push to it. The project imposes the guard on itself, so it works on every host and every plan. Host protection, such as a branch policy, adds a guard on the server.
 
-Version 0.1.0 had git models (`trunk`, `git-flow`) and a setting for branch protection. Task 0001 removed them. A git flow project sets its base branch to `develop`. Task 0003 made the git hooks core and removed the releases from the plugin.
+Version 0.1.0 had git models (`trunk`, `git-flow`) and a setting for branch protection. Task 0001 removed them. A git flow project sets its base branch to `develop`. Task 0003 made the git hooks core and removed the releases from the plugin. Decision 42 brought the releases back, as a recipe per project.
 
 ### 3.4 The roadmap
 
