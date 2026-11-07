@@ -1,0 +1,14 @@
+{
+  "name": "ai-workflow",
+  "description": "A fenced, documented AI workflow for Claude Code: discuss, then build.",
+  "owner": {
+    "name": "Djurre Aikema"
+  },
+  "plugins": [
+    {
+      "name": "flow",
+      "source": "./plugins/flow",
+      "description": "The flow workflow: a brief with a map, parts and a human checklist, an autopilot build to a pull request, a roadmap of milestones from client requests, and an adopt skill for existing projects."
+    }
+  ]
+}

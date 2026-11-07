@@ -1,0 +1,528 @@
+diff --git a/src/catalog.ts b/src/catalog.ts
+index c26108c..8323726 100644
+--- a/src/catalog.ts
++++ b/src/catalog.ts
+@@ -29,10 +29,10 @@ export interface Book {
+ }
+ 
+ /** The states that a copy can have. */
+-export type CopyStatus = "available" | "on-loan" | "lost" | "repair";
++export type CopyStatus = "available" | "on-loan" | "on-hold" | "lost" | "repair";
+ 
+ /** The list of valid copy states, for input checks. */
+-export const COPY_STATUSES = ["available", "on-loan", "lost", "repair"] as const;
++export const COPY_STATUSES = ["available", "on-loan", "on-hold", "lost", "repair"] as const;
+ 
+ /** One physical copy of a book. A copy id has the form "<bookId>-c<n>". */
+ export interface Copy {
+@@ -274,6 +274,7 @@ export class Catalog {
+     const counts: Record<CopyStatus, number> = {
+       available: 0,
+       "on-loan": 0,
++      "on-hold": 0,
+       lost: 0,
+       repair: 0,
+     };
+@@ -310,7 +311,7 @@ export interface StockLine {
+ export function stockOverview(catalog: Catalog): StockLine[] {
+   return catalog.listBooks().map((book) => {
+     const counts = catalog.statusCounts(book.id);
+-    const total = counts.available + counts["on-loan"] + counts.lost + counts.repair;
++    const total = counts.available + counts["on-loan"] + counts["on-hold"] + counts.lost + counts.repair;
+     return { book, counts, total };
+   });
+ }
+diff --git a/src/holds.ts b/src/holds.ts
+new file mode 100644
+index 0000000..1afbda8
+--- /dev/null
++++ b/src/holds.ts
+@@ -0,0 +1,194 @@
++/**
++ * Holds: a member waits for a copy of a book that has no available copy.
++ *
++ * A hold is waiting until a copy comes back. The returned copy is kept for the
++ * first waiting hold, which becomes ready for 3 days. The member then borrows
++ * the held copy, or the hold is cancelled or expires and the copy moves on.
++ */
++
++import type { Catalog } from "./catalog.ts";
++import { addDays, isBefore, isValidDate } from "./dates.ts";
++import type { IsoDate } from "./dates.ts";
++import type { LoanService } from "./loans.ts";
++import type { MemberRegistry } from "./members.ts";
++
++/** The error that the hold service throws for bad input or a refused hold. */
++export class HoldError extends Error {
++  constructor(message: string) {
++    super(message);
++    this.name = "HoldError";
++  }
++}
++
++/** The days that a ready hold keeps its copy. */
++export const READY_DAYS = 3;
++
++export type HoldStatus = "waiting" | "ready" | "fulfilled" | "cancelled" | "expired";
++
++/** A request of a member for a book. */
++export interface Hold {
++  id: string;
++  memberId: string;
++  bookId: string;
++  placed: IsoDate;
++  status: HoldStatus;
++  copyId?: string;
++  readyUntil?: IsoDate;
++}
++
++function requireToday(today: IsoDate): void {
++  if (!isValidDate(today)) {
++    throw new HoldError(`Invalid date: ${String(today)}`);
++  }
++}
++
++function cloneHold(hold: Hold): Hold {
++  return { ...hold };
++}
++
++export class HoldService {
++  private readonly catalog: Catalog;
++  private readonly members: MemberRegistry;
++  private readonly holds = new Map<string, Hold>();
++  private loans: LoanService | undefined;
++  private nextId = 1;
++
++  constructor(catalog: Catalog, members: MemberRegistry) {
++    this.catalog = catalog;
++    this.members = members;
++  }
++
++  /** Called by a LoanService that gets this service, so that a hold can see the loans. */
++  attachLoans(loans: LoanService): void {
++    this.loans = loans;
++  }
++
++  placeHold(memberId: string, bookId: string, today: IsoDate): Hold {
++    requireToday(today);
++    if (!this.members.has(memberId)) {
++      throw new HoldError(`Unknown member id: ${memberId}`);
++    }
++    if (!this.catalog.hasBook(bookId)) {
++      throw new HoldError(`Unknown book id: ${bookId}`);
++    }
++    if (this.members.get(memberId).status === "suspended") {
++      throw new HoldError(`Member ${memberId} is suspended`);
++    }
++    if (this.catalog.availableCopies(bookId).length > 0) {
++      throw new HoldError(`A copy of book ${bookId} is available. Borrow it instead`);
++    }
++    if (this.open(memberId).some((hold) => hold.bookId === bookId)) {
++      throw new HoldError(`Member ${memberId} has a hold on book ${bookId} already`);
++    }
++    if (this.loans?.activeLoans(memberId).some((loan) => loan.bookId === bookId)) {
++      throw new HoldError(`Member ${memberId} has book ${bookId} on loan`);
++    }
++    const limit = this.members.rulesFor(memberId).maxHolds;
++    if (this.open(memberId).length >= limit) {
++      throw new HoldError(`Member ${memberId} has ${limit} holds already`);
++    }
++    const hold: Hold = {
++      id: `H${this.nextId}`,
++      memberId,
++      bookId,
++      placed: today,
++      status: "waiting",
++    };
++    this.nextId += 1;
++    this.holds.set(hold.id, hold);
++    return cloneHold(hold);
++  }
++
++  cancelHold(holdId: string, today: IsoDate): Hold {
++    requireToday(today);
++    const hold = this.require(holdId);
++    if (hold.status !== "waiting" && hold.status !== "ready") {
++      throw new HoldError(`Hold ${holdId} is ${hold.status}`);
++    }
++    const wasReady = hold.status === "ready";
++    hold.status = "cancelled";
++    if (wasReady) {
++      this.release(hold.copyId as string, hold.bookId, today);
++    }
++    return cloneHold(hold);
++  }
++
++  /** Expire each ready hold that is past its date, and pass its copy on. */
++  expireHolds(today: IsoDate): Hold[] {
++    requireToday(today);
++    const late = [...this.holds.values()].filter(
++      (hold) => hold.status === "ready" && isBefore(hold.readyUntil as IsoDate, today),
++    );
++    for (const hold of late) {
++      hold.status = "expired";
++      this.release(hold.copyId as string, hold.bookId, today);
++    }
++    return late.map(cloneHold);
++  }
++
++  getHold(holdId: string): Hold {
++    return cloneHold(this.require(holdId));
++  }
++
++  allHolds(): Hold[] {
++    return [...this.holds.values()].map(cloneHold);
++  }
++
++  /** The waiting holds of a book, in the order of placement. */
++  queue(bookId: string): Hold[] {
++    return [...this.holds.values()]
++      .filter((hold) => hold.bookId === bookId && hold.status === "waiting")
++      .map(cloneHold);
++  }
++
++  /** The 1-based place of a waiting hold in its queue, or null. */
++  position(holdId: string): number | null {
++    const hold = this.require(holdId);
++    if (hold.status !== "waiting") return null;
++    return this.queue(hold.bookId).findIndex((entry) => entry.id === holdId) + 1;
++  }
++
++  /** The ready hold of a member on a book, if any. Used by LoanService.checkout. */
++  readyHoldOf(memberId: string, bookId: string): Hold | undefined {
++    const hold = [...this.holds.values()].find(
++      (entry) => entry.memberId === memberId && entry.bookId === bookId && entry.status === "ready",
++    );
++    return hold === undefined ? undefined : cloneHold(hold);
++  }
++
++  /** Mark a ready hold as fulfilled. Used by LoanService.checkout. */
++  fulfill(holdId: string): void {
++    this.require(holdId).status = "fulfilled";
++  }
++
++  /**
++   * Give a free copy to the first waiting hold of its book, or make it
++   * available when no hold waits. Used by LoanService.returnCopy.
++   */
++  release(copyId: string, bookId: string, today: IsoDate): void {
++    const next = this.queue(bookId)[0];
++    if (next === undefined) {
++      this.catalog.setCopyStatus(copyId, "available");
++      return;
++    }
++    const hold = this.require(next.id);
++    hold.status = "ready";
++    hold.copyId = copyId;
++    hold.readyUntil = addDays(today, READY_DAYS);
++    this.catalog.setCopyStatus(copyId, "on-hold");
++  }
++
++  private open(memberId: string): Hold[] {
++    return [...this.holds.values()].filter(
++      (hold) => hold.memberId === memberId && (hold.status === "waiting" || hold.status === "ready"),
++    );
++  }
++
++  private require(holdId: string): Hold {
++    const hold = this.holds.get(holdId);
++    if (hold === undefined) {
++      throw new HoldError(`Unknown hold id: ${holdId}`);
++    }
++    return hold;
++  }
++}
+diff --git a/src/loans.ts b/src/loans.ts
+index e4139b3..bb91910 100644
+--- a/src/loans.ts
++++ b/src/loans.ts
+@@ -9,6 +9,7 @@ import { addDays, daysBetween, isAfter, isValidDate } from "./dates.ts";
+ import type { IsoDate } from "./dates.ts";
+ import { LOST_COPY_FEE_CENTS, calculateLateFee } from "./fees.ts";
+ import type { FeeLedger } from "./fees.ts";
++import type { HoldService } from "./holds.ts";
+ import type { MemberRegistry } from "./members.ts";
+ 
+ /** The error that the loan service throws when a rule refuses an action. */
+@@ -55,14 +56,17 @@ export class LoanService {
+   private readonly catalog: Catalog;
+   private readonly members: MemberRegistry;
+   private readonly ledger: FeeLedger;
++  private readonly holds: HoldService | undefined;
+   private readonly loans = new Map<string, Loan>();
+   private nextId = 1;
+ 
+   /** Make a loan service on top of a catalog, a member registry and a fee ledger. */
+-  constructor(catalog: Catalog, members: MemberRegistry, ledger: FeeLedger) {
++  constructor(catalog: Catalog, members: MemberRegistry, ledger: FeeLedger, holds?: HoldService) {
+     this.catalog = catalog;
+     this.members = members;
+     this.ledger = ledger;
++    this.holds = holds;
++    holds?.attachLoans(this);
+   }
+ 
+   /**
+@@ -93,11 +97,18 @@ export class LoanService {
+     if (this.ledger.isOverThreshold(memberId)) {
+       throw new LoanError(`Member ${memberId} owes too much in fees`);
+     }
+-    const copy = this.catalog.availableCopies(bookId)[0];
++    const ready = this.holds?.readyHoldOf(memberId, bookId);
++    const copy =
++      ready === undefined
++        ? this.catalog.availableCopies(bookId)[0]
++        : this.catalog.getCopy(ready.copyId as string);
+     if (copy === undefined) {
+       throw new LoanError(`No copy of book ${bookId} is available`);
+     }
+     this.catalog.setCopyStatus(copy.id, "on-loan");
++    if (ready !== undefined) {
++      this.holds?.fulfill(ready.id);
++    }
+     const loan: Loan = {
+       id: this.makeId(),
+       copyId: copy.id,
+@@ -152,7 +163,11 @@ export class LoanService {
+       throw new LoanError(`Loan ${loanId} is reported lost. Use the lost copy rules instead`);
+     }
+     loan.returned = today;
+-    this.catalog.setCopyStatus(loan.copyId, "available");
++    if (this.holds === undefined) {
++      this.catalog.setCopyStatus(loan.copyId, "available");
++    } else {
++      this.holds.release(loan.copyId, loan.bookId, today);
++    }
+     const member = this.members.get(loan.memberId);
+     const daysLate = daysBetween(loan.due, today);
+     const feeCents = calculateLateFee(daysLate, member.tier);
+diff --git a/src/members.ts b/src/members.ts
+index 2a88c1f..f429c57 100644
+--- a/src/members.ts
++++ b/src/members.ts
+@@ -21,8 +21,8 @@ export type MemberStatus = "active" | "suspended";
+ 
+ /** The loan rules of each tier. The discount is a share of the late fee that is waived. */
+ export const TIER_RULES = {
+-  standard: { maxLoans: 5, loanDays: 14, maxRenewals: 2, feeDiscount: 0 },
+-  premium: { maxLoans: 10, loanDays: 21, maxRenewals: 3, feeDiscount: 0.5 },
++  standard: { maxLoans: 5, loanDays: 14, maxRenewals: 2, maxHolds: 3, feeDiscount: 0 },
++  premium: { maxLoans: 10, loanDays: 21, maxRenewals: 3, maxHolds: 6, feeDiscount: 0.5 },
+ } as const;
+ 
+ /** The loan rules of one tier. */
+diff --git a/src/reports.ts b/src/reports.ts
+index f60bb75..5f37c41 100644
+--- a/src/reports.ts
++++ b/src/reports.ts
+@@ -7,6 +7,7 @@ import { daysBetween, isAfter, isBefore, isValidDate } from "./dates.ts";
+ import type { IsoDate } from "./dates.ts";
+ import { formatCents } from "./fees.ts";
+ import type { FeeLedger } from "./fees.ts";
++import type { Hold } from "./holds.ts";
+ import type { Loan } from "./loans.ts";
+ import type { MemberRegistry } from "./members.ts";
+ 
+@@ -294,3 +295,46 @@ export function loansPerMonth(loans: Loan[]): Array<{ month: string; loans: numb
+     .sort((a, b) => a[0].localeCompare(b[0]))
+     .map(([month, count]) => ({ month, loans: count }));
+ }
++
++/** One line of the holds report. */
++export interface HoldsRow {
++  title: string;
++  memberName: string;
++  status: string;
++  position: number;
++  readyUntil: string;
++}
++
++/**
++ * List the waiting and the ready holds. A ready hold has position 0. A waiting
++ * hold has its 1-based place among the waiting holds of its book, in the order
++ * of the input. Sorted by title, then by position. Equal rows keep their order.
++ */
++export function holdsReportRows(
++  holds: Hold[],
++  catalog: Catalog,
++  members: MemberRegistry,
++  today: IsoDate,
++): HoldsRow[] {
++  if (!isValidDate(today)) {
++    throw new ReportError(`Invalid date: ${String(today)}`);
++  }
++  const waiting = new Map<string, number>();
++  const rows: HoldsRow[] = [];
++  for (const hold of holds) {
++    if (hold.status !== "waiting" && hold.status !== "ready") continue;
++    let position = 0;
++    if (hold.status === "waiting") {
++      position = (waiting.get(hold.bookId) ?? 0) + 1;
++      waiting.set(hold.bookId, position);
++    }
++    rows.push({
++      title: catalog.getBook(hold.bookId).title,
++      memberName: members.get(hold.memberId).name,
++      status: hold.status,
++      position,
++      readyUntil: hold.readyUntil ?? "",
++    });
++  }
++  return rows.sort((a, b) => a.title.localeCompare(b.title) || a.position - b.position);
++}
+diff --git a/test/catalog.test.ts b/test/catalog.test.ts
+index 1bf3315..f033b73 100644
+--- a/test/catalog.test.ts
++++ b/test/catalog.test.ts
+@@ -198,7 +198,7 @@ describe("catalog: copies", () => {
+     catalog.addCopy("b1", "2024-01-01");
+     catalog.setCopyStatus(a.id, "on-loan");
+     catalog.setCopyStatus(b.id, "lost");
+-    assert.deepEqual(catalog.statusCounts("b1"), { available: 1, "on-loan": 1, lost: 1, repair: 0 });
++    assert.deepEqual(catalog.statusCounts("b1"), { available: 1, "on-loan": 1, "on-hold": 0, lost: 1, repair: 0 });
+   });
+ });
+ 
+diff --git a/test/holds.test.ts b/test/holds.test.ts
+new file mode 100644
+index 0000000..0cad427
+--- /dev/null
++++ b/test/holds.test.ts
+@@ -0,0 +1,125 @@
++import { describe, it } from "node:test";
++import assert from "node:assert/strict";
++import { Catalog } from "../src/catalog.ts";
++import { FeeLedger } from "../src/fees.ts";
++import { HoldError, HoldService } from "../src/holds.ts";
++import { LoanService } from "../src/loans.ts";
++import { MemberRegistry } from "../src/members.ts";
++import { holdsReportRows } from "../src/reports.ts";
++
++function makeWorld() {
++  const catalog = new Catalog();
++  const members = new MemberRegistry();
++  const holds = new HoldService(catalog, members);
++  const loans = new LoanService(catalog, members, new FeeLedger(), holds);
++  catalog.addBook({ id: "b1", title: "Dune", author: "Frank Herbert", year: 1965 });
++  catalog.addCopy("b1", "2024-01-01");
++  for (const [id, name] of [["m1", "Alice"], ["m2", "Bob"], ["m3", "Carol"]] as const) {
++    members.register({ id, name, email: `${id}@example.com`, joined: "2024-01-01" });
++  }
++  return { catalog, members, holds, loans };
++}
++
++describe("holds: placing", () => {
++  it("refuses a hold while a copy is available", () => {
++    const { holds } = makeWorld();
++    assert.throws(() => holds.placeHold("m1", "b1", "2024-06-01"), HoldError);
++  });
++
++  it("queues holds in order and numbers them from 1", () => {
++    const { holds, loans } = makeWorld();
++    loans.checkout("m1", "b1", "2024-06-01");
++    const first = holds.placeHold("m2", "b1", "2024-06-02");
++    const second = holds.placeHold("m3", "b1", "2024-06-03");
++    assert.equal(first.id, "H1");
++    assert.equal(first.status, "waiting");
++    assert.deepEqual(holds.queue("b1").map((hold) => hold.id), ["H1", "H2"]);
++    assert.equal(holds.position(second.id), 2);
++  });
++
++  it("refuses a second hold, a hold on a loaned book and a suspended member", () => {
++    const { holds, loans, members } = makeWorld();
++    loans.checkout("m1", "b1", "2024-06-01");
++    holds.placeHold("m2", "b1", "2024-06-02");
++    assert.throws(() => holds.placeHold("m2", "b1", "2024-06-02"), HoldError);
++    assert.throws(() => holds.placeHold("m1", "b1", "2024-06-02"), HoldError);
++    members.suspend("m3", "test");
++    assert.throws(() => holds.placeHold("m3", "b1", "2024-06-02"), HoldError);
++  });
++
++  it("refuses a hold over the limit of the tier", () => {
++    const { catalog, holds, loans, members } = makeWorld();
++    members.register({ id: "m4", name: "Dan", email: "dan@example.com", joined: "2024-01-01" });
++    for (let index = 0; index < 4; index += 1) {
++      catalog.addBook({ id: `x${index}`, title: `X${index}`, author: "A", year: 2000 });
++      catalog.addCopy(`x${index}`, "2024-01-01");
++      loans.checkout("m1", `x${index}`, "2024-06-01");
++    }
++    for (let index = 0; index < 3; index += 1) holds.placeHold("m4", `x${index}`, "2024-06-02");
++    assert.throws(() => holds.placeHold("m4", "x3", "2024-06-02"), HoldError);
++  });
++});
++
++describe("holds: return, checkout, cancel and expiry", () => {
++  it("keeps a returned copy for the first waiting hold", () => {
++    const { catalog, holds, loans } = makeWorld();
++    const loan = loans.checkout("m1", "b1", "2024-06-01");
++    holds.placeHold("m2", "b1", "2024-06-02");
++    loans.returnCopy(loan.id, "2024-06-05");
++    const hold = holds.getHold("H1");
++    assert.equal(hold.status, "ready");
++    assert.equal(hold.copyId, "b1-c1");
++    assert.equal(hold.readyUntil, "2024-06-08");
++    assert.equal(catalog.getCopy("b1-c1").status, "on-hold");
++    assert.throws(() => loans.checkout("m3", "b1", "2024-06-06"));
++  });
++
++  it("lends the held copy to the member and fulfils the hold", () => {
++    const { catalog, holds, loans } = makeWorld();
++    const loan = loans.checkout("m1", "b1", "2024-06-01");
++    holds.placeHold("m2", "b1", "2024-06-02");
++    loans.returnCopy(loan.id, "2024-06-05");
++    assert.equal(loans.checkout("m2", "b1", "2024-06-06").copyId, "b1-c1");
++    assert.equal(holds.getHold("H1").status, "fulfilled");
++    assert.equal(catalog.getCopy("b1-c1").status, "on-loan");
++  });
++
++  it("passes a cancelled ready hold to the next one, then frees the copy", () => {
++    const { catalog, holds, loans } = makeWorld();
++    const loan = loans.checkout("m1", "b1", "2024-06-01");
++    holds.placeHold("m2", "b1", "2024-06-02");
++    holds.placeHold("m3", "b1", "2024-06-03");
++    loans.returnCopy(loan.id, "2024-06-05");
++    holds.cancelHold("H1", "2024-06-06");
++    assert.equal(holds.getHold("H2").status, "ready");
++    holds.cancelHold("H2", "2024-06-06");
++    assert.equal(catalog.getCopy("b1-c1").status, "available");
++    assert.throws(() => holds.cancelHold("H2", "2024-06-06"), HoldError);
++  });
++
++  it("expires a late ready hold and returns it", () => {
++    const { catalog, holds, loans } = makeWorld();
++    const loan = loans.checkout("m1", "b1", "2024-06-01");
++    holds.placeHold("m2", "b1", "2024-06-02");
++    loans.returnCopy(loan.id, "2024-06-05");
++    assert.deepEqual(holds.expireHolds("2024-06-08"), []);
++    assert.deepEqual(holds.expireHolds("2024-06-09").map((hold) => hold.id), ["H1"]);
++    assert.equal(catalog.getCopy("b1-c1").status, "available");
++    assert.equal(holds.position("H1"), null);
++  });
++});
++
++describe("holds: report", () => {
++  it("lists waiting and ready holds, ready first", () => {
++    const { catalog, members, holds, loans } = makeWorld();
++    const loan = loans.checkout("m1", "b1", "2024-06-01");
++    holds.placeHold("m2", "b1", "2024-06-02");
++    holds.placeHold("m3", "b1", "2024-06-03");
++    loans.returnCopy(loan.id, "2024-06-05");
++    const rows = holdsReportRows(holds.allHolds(), catalog, members, "2024-06-06");
++    assert.deepEqual(rows.map((row) => [row.memberName, row.status, row.position, row.readyUntil]), [
++      ["Bob", "ready", 0, "2024-06-08"],
++      ["Carol", "waiting", 1, ""],
++    ]);
++  });
++});
+diff --git a/test/members.test.ts b/test/members.test.ts
+index cd3ad41..b26517f 100644
+--- a/test/members.test.ts
++++ b/test/members.test.ts
+@@ -48,6 +48,7 @@ describe("members: tiers", () => {
+     assert.ok(TIER_RULES.premium.loanDays > TIER_RULES.standard.loanDays);
+     assert.ok(TIER_RULES.premium.maxRenewals > TIER_RULES.standard.maxRenewals);
+     assert.ok(TIER_RULES.premium.feeDiscount > TIER_RULES.standard.feeDiscount);
++    assert.ok(TIER_RULES.premium.maxHolds > TIER_RULES.standard.maxHolds);
+   });
+ });
+ 

@@ -1,0 +1,36 @@
+{
+  "lean": {
+    "plugin": false,
+    "remove": [
+      "AGENTS.md",
+      "docs/workflow"
+    ],
+    "files": [
+      {
+        "path": "CLAUDE.md",
+        "source": "setups/lean/CLAUDE.md"
+      }
+    ],
+    "start": "Build the feature in docs/tasks/_new/BRIEF.md.",
+    "replies": [],
+    "max_messages": 20
+  },
+  "flow-thin": {
+    "plugin": true,
+    "remove": [],
+    "files": [
+      {
+        "path": "CLAUDE.md",
+        "text": "@AGENTS.md"
+      }
+    ],
+    "start": "/flow:build docs/tasks/_new",
+    "replies": [
+      {
+        "match": "(?i)link.*pull request|pull request.*link",
+        "reply": "This project has no host. Record \"no pull request\" and continue."
+      }
+    ],
+    "max_messages": 10
+  }
+}

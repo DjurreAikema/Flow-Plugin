@@ -1,0 +1,17 @@
+{
+  "name": "holds",
+  "brief": "BRIEF.md",
+  "reference": "reference.patch",
+  "hidden_tests": {
+    "hidden/holds.test.ts": "test/holds.hidden.test.ts"
+  },
+  "allowed": [
+    "src/holds.ts",
+    "src/catalog.ts",
+    "src/members.ts",
+    "src/loans.ts",
+    "src/reports.ts",
+    "test/**",
+    "docs/tasks/**"
+  ]
+}

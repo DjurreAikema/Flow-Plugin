@@ -1,0 +1,24 @@
+#!/bin/sh
+# Refuses every push to the protected branches of the flow workflow,
+# and the deletion of a protected branch.
+# Work reaches a protected branch only through a pull request.
+# Pushes of other branches and of tags pass.
+# /flow:adopt fills in PROTECTED with the base branch from docs/workflow/CONFIG.md.
+
+PROTECTED="main"
+
+while read -r _ _ remote_ref _; do
+    case "$remote_ref" in
+        refs/heads/*) branch=${remote_ref#refs/heads/} ;;
+        *) continue ;;
+    esac
+    for p in $PROTECTED; do
+        if [ "$branch" = "$p" ]; then
+            echo "❌ Push to '$branch' refused: the branch is protected." >&2
+            echo "   Merge work through a pull request." >&2
+            exit 1
+        fi
+    done
+done
+
+exit 0

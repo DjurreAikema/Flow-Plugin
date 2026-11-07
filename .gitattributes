@@ -1,0 +1,5 @@
+* text=auto
+*.sh text eol=lf
+tools/git-hooks/* text eol=lf
+plugins/flow/templates/git-hooks/* text eol=lf
+bench/sample/tools/git-hooks/* text eol=lf

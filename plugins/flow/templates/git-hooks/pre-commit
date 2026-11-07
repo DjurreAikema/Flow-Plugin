@@ -1,0 +1,21 @@
+#!/bin/sh
+# Refuses direct commits on the protected branches of the flow workflow.
+# Allows the commit that ends a merge, for the conflicts of a release.
+# /flow:adopt fills in PROTECTED from docs/workflow/CONFIG.md.
+
+PROTECTED="main"
+
+branch=$(git symbolic-ref --short -q HEAD) || exit 0
+
+for p in $PROTECTED; do
+    if [ "$branch" = "$p" ]; then
+        if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]; then
+            exit 0
+        fi
+        echo "❌ Direct commits on '$branch' are not allowed." >&2
+        echo "   Start a feature branch: feature/<task ID>" >&2
+        exit 1
+    fi
+done
+
+exit 0

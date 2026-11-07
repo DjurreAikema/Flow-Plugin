@@ -1,0 +1,12 @@
+{
+  "name": "flow",
+  "displayName": "Flow",
+  "version": "0.1.0",
+  "description": "A fenced, documented AI workflow: discuss the work into a brief, then build it on autopilot to a pull request. A roadmap of milestones turns client requests into long-term goals. Works in any git project. GitHub and Azure DevOps get extra support for pull requests.",
+  "author": {
+    "name": "Djurre Aikema"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/DjurreAikema/Flow-Plugin",
+  "keywords": ["workflow", "planning", "tasks", "review", "brief"]
+}
