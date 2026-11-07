@@ -73,3 +73,11 @@ Added: `/flow:release` makes a release in the way of the project. Its first run 
 
 ## Open questions
 none
+
+## Outcome
+
+| What changed | Why | What it affects |
+|--------------|-----|-----------------|
+| The recipe of this repository has an extra section "Checks". | The run checks the recipe first (decision 9). The template has no section for these checks, and the developer can add free text. | `docs/workflow/RELEASE.md` |
+| The quick setup block of `/flow:adopt` names `Release none` among the defaults. | Step 3 of "Write the setup" writes `Release: none`, so the block shows it. | `plugins/flow/skills/adopt/SKILL.md` |
+| Decision 42 ends with `(task 0013)`. | Every other row names its task. | `docs/DESIGN.md` |
