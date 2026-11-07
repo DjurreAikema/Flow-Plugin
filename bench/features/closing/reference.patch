@@ -1,0 +1,238 @@
+diff --git a/src/fees.ts b/src/fees.ts
+index 191ff7a..504db0a 100644
+--- a/src/fees.ts
++++ b/src/fees.ts
+@@ -30,7 +30,7 @@ export const SUSPEND_THRESHOLD_CENTS = 500;
+ export const LOST_COPY_FEE_CENTS = 2000;
+ 
+ /** The kinds of entry in the ledger. */
+-export type EntryKind = "charge" | "payment" | "waiver";
++export type EntryKind = "charge" | "payment" | "waiver" | "write-off";
+ 
+ /**
+  * One line of the ledger. A charge has a positive amount. A payment and a
+@@ -189,6 +189,27 @@ export class FeeLedger {
+     return { ...entry };
+   }
+ 
++  /**
++   * Write off the open balance of a member. This adds one entry of the kind
++   * "write-off" that brings the balance to 0. It returns the new entry, or
++   * undefined when the balance is 0 or less. The ledger stays append-only.
++   */
++  writeOff(memberId: string, date: IsoDate): LedgerEntry | undefined {
++    requireMemberAndDate(memberId, date);
++    const balance = this.balance(memberId);
++    if (balance <= 0) return undefined;
++    const entry: LedgerEntry = {
++      id: this.makeId(),
++      memberId,
++      kind: "write-off",
++      cents: -balance,
++      reason: "write-off",
++      date,
++    };
++    this.log.push(entry);
++    return { ...entry };
++  }
++
+   /** Return true when the balance of a member is above the suspension threshold. */
+   isOverThreshold(memberId: string): boolean {
+     return this.balance(memberId) > SUSPEND_THRESHOLD_CENTS;
+diff --git a/src/loans.ts b/src/loans.ts
+index e4139b3..08f583b 100644
+--- a/src/loans.ts
++++ b/src/loans.ts
+@@ -9,7 +9,7 @@ import { addDays, daysBetween, isAfter, isValidDate } from "./dates.ts";
+ import type { IsoDate } from "./dates.ts";
+ import { LOST_COPY_FEE_CENTS, calculateLateFee } from "./fees.ts";
+ import type { FeeLedger } from "./fees.ts";
+-import type { MemberRegistry } from "./members.ts";
++import type { Member, MemberRegistry } from "./members.ts";
+ 
+ /** The error that the loan service throws when a rule refuses an action. */
+ export class LoanError extends Error {
+@@ -80,6 +80,9 @@ export class LoanService {
+     if (!this.catalog.hasBook(bookId)) {
+       throw new LoanError(`Unknown book id: ${bookId}`);
+     }
++    if (member.status === "closed") {
++      throw new LoanError(`The account of member ${memberId} is closed`);
++    }
+     if (member.status === "suspended") {
+       throw new LoanError(`Member ${memberId} is suspended`);
+     }
+@@ -184,6 +187,29 @@ export class LoanService {
+     return cloneLoan(loan);
+   }
+ 
++  /**
++   * Close the account of a member. The service refuses when the account is
++   * closed already, when the member has an active loan, or when the balance is
++   * above the fee threshold. A refusal changes nothing. A balance of the
++   * threshold or less is written off with a new ledger entry. The member record
++   * stays, with the status "closed".
++   */
++  closeAccount(memberId: string, today: IsoDate): Member {
++    requireToday(today);
++    const member = this.members.get(memberId);
++    if (member.status === "closed") {
++      throw new LoanError(`The account of member ${memberId} is closed already`);
++    }
++    if (this.activeLoans(memberId).length > 0) {
++      throw new LoanError(`Member ${memberId} has active loans`);
++    }
++    if (this.ledger.isOverThreshold(memberId)) {
++      throw new LoanError(`Member ${memberId} owes too much in fees to close the account`);
++    }
++    this.ledger.writeOff(memberId, today);
++    return this.members.close(memberId, today);
++  }
++
+   /** Return a loan by id. Throws LoanError when the loan does not exist. */
+   getLoan(loanId: string): Loan {
+     return cloneLoan(this.require(loanId));
+diff --git a/src/members.ts b/src/members.ts
+index 2a88c1f..89bea1a 100644
+--- a/src/members.ts
++++ b/src/members.ts
+@@ -16,8 +16,8 @@ export class MemberError extends Error {
+ /** The membership tiers. */
+ export type Tier = "standard" | "premium";
+ 
+-/** Whether a member can borrow. A suspended member cannot. */
+-export type MemberStatus = "active" | "suspended";
++/** Whether a member can borrow. A suspended or closed member cannot. A closed account stays closed. */
++export type MemberStatus = "active" | "suspended" | "closed";
+ 
+ /** The loan rules of each tier. The discount is a share of the late fee that is waived. */
+ export const TIER_RULES = {
+@@ -36,6 +36,8 @@ export interface Member {
+   tier: Tier;
+   joined: IsoDate;
+   status: MemberStatus;
++  /** The date on which the account was closed. Only a closed member has it. */
++  closed?: IsoDate;
+ }
+ 
+ /** The input to register a member. The tier defaults to "standard". */
+@@ -160,7 +162,7 @@ export class MemberRegistry {
+    * suspended already is allowed, and it records the new reason.
+    */
+   suspend(id: string, reason: string): Member {
+-    const member = this.require(id);
++    const member = this.requireOpen(id);
+     if (typeof reason !== "string" || reason.trim().length === 0) {
+       throw new MemberError("A suspension needs a reason");
+     }
+@@ -171,11 +173,26 @@ export class MemberRegistry {
+ 
+   /** Make a suspended member active again. An active member stays active. */
+   reactivate(id: string): Member {
+-    const member = this.require(id);
++    const member = this.requireOpen(id);
+     member.status = "active";
+     return { ...member };
+   }
+ 
++  /**
++   * Close the account of a member. The record stays, with the status "closed"
++   * and the date. Throws MemberError for an invalid date and for a closed account.
++   * The loan service checks the loans and the fees first (LoanService.closeAccount).
++   */
++  close(id: string, today: IsoDate): Member {
++    const member = this.requireOpen(id);
++    if (!isValidDate(today)) {
++      throw new MemberError(`Invalid date: ${String(today)}`);
++    }
++    member.status = "closed";
++    member.closed = today;
++    return { ...member };
++  }
++
+   /** Change the tier of a member. Throws MemberError for an unknown tier. */
+   changeTier(id: string, tier: Tier): Member {
+     const member = this.require(id);
+@@ -202,6 +219,14 @@ export class MemberRegistry {
+     return this.members.size;
+   }
+ 
++  private requireOpen(id: string): Member {
++    const member = this.require(id);
++    if (member.status === "closed") {
++      throw new MemberError(`The account of member ${id} is closed`);
++    }
++    return member;
++  }
++
+   private require(id: string): Member {
+     const member = this.members.get(id);
+     if (member === undefined) {
+diff --git a/test/closing.test.ts b/test/closing.test.ts
+new file mode 100644
+index 0000000..0809de9
+--- /dev/null
++++ b/test/closing.test.ts
+@@ -0,0 +1,62 @@
++import { describe, it } from "node:test";
++import assert from "node:assert/strict";
++import { Catalog } from "../src/catalog.ts";
++import { FeeLedger } from "../src/fees.ts";
++import { LoanError, LoanService } from "../src/loans.ts";
++import { MemberError, MemberRegistry } from "../src/members.ts";
++
++function makeWorld() {
++  const catalog = new Catalog();
++  const members = new MemberRegistry();
++  const ledger = new FeeLedger();
++  const loans = new LoanService(catalog, members, ledger);
++  catalog.addBook({ id: "b1", title: "Dune", author: "Frank Herbert", year: 1965 });
++  catalog.addCopy("b1", "2024-01-01");
++  members.register({ id: "m1", name: "Carol", email: "carol@example.com", joined: "2024-01-01" });
++  return { members, ledger, loans };
++}
++
++describe("loans: closing an account", () => {
++  it("closes the account and records the date", () => {
++    const { members, loans } = makeWorld();
++    const member = loans.closeAccount("m1", "2024-06-20");
++    assert.equal(member.status, "closed");
++    assert.equal(members.get("m1").closed, "2024-06-20");
++  });
++
++  it("refuses an active loan, a high balance and a second close", () => {
++    const { ledger, loans } = makeWorld();
++    const loan = loans.checkout("m1", "b1", "2024-06-01");
++    assert.throws(() => loans.closeAccount("m1", "2024-06-20"), LoanError);
++    loans.reportLost(loan.id, "2024-06-10");
++    assert.throws(() => loans.closeAccount("m1", "2024-06-20"), LoanError);
++    ledger.pay("m1", 1800, "2024-06-11");
++    loans.closeAccount("m1", "2024-06-20");
++    assert.throws(() => loans.closeAccount("m1", "2024-06-21"), LoanError);
++    assert.throws(() => loans.checkout("m1", "b1", "2024-06-21"), LoanError);
++  });
++
++  it("writes off a small balance with a new ledger entry", () => {
++    const { ledger, loans } = makeWorld();
++    ledger.charge("m1", 300, "late return", "2024-06-10");
++    loans.closeAccount("m1", "2024-06-20");
++    const entries = ledger.entries("m1");
++    assert.equal(entries.length, 2);
++    assert.equal(entries[1]?.kind, "write-off");
++    assert.equal(entries[1]?.cents, -300);
++    assert.equal(ledger.balance("m1"), 0);
++  });
++
++  it("adds no write-off for a balance of 0", () => {
++    const { ledger } = makeWorld();
++    assert.equal(ledger.writeOff("m1", "2024-06-20"), undefined);
++    assert.equal(ledger.entries("m1").length, 0);
++  });
++
++  it("refuses to suspend or reactivate a closed member", () => {
++    const { members, loans } = makeWorld();
++    loans.closeAccount("m1", "2024-06-20");
++    assert.throws(() => members.suspend("m1", "fees"), MemberError);
++    assert.throws(() => members.reactivate("m1"), MemberError);
++  });
++});

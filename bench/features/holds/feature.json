@@ -1,5 +1,6 @@
 {
   "name": "holds",
+  "mode": "brief",
   "brief": "BRIEF.md",
   "reference": "reference.patch",
   "hidden_tests": {
