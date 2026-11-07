@@ -30,7 +30,7 @@ The automated tests of the project. `/flow:test-plan` writes the plan (`referenc
 The documents that the agent reads before it plans. Write "none" for a document that the project does not have.
 
 - Scope: none
-- Design: none
+- Design: `docs/RULES.md`
 - Roadmap: none
 - Decision log: none
 

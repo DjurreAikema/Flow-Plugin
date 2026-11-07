@@ -13,7 +13,7 @@ Every function with a branch, a calculation or a rule. Not plain data, wiring or
 - unit: one function or class, in memory. `node --test "test/**/*.test.ts"`
 
 ## How tests are written
-none
+Tests never use the real date. A test passes `today` explicitly, as a fixed date such as `"2024-06-01"`. A new test never calls `new Date()` without an argument, `Date.now()` or `currentYear()`.
 
 ## Tested by hand
 none

@@ -2,7 +2,9 @@
 """Driver of the workflow benchmark.
 
 Runs one setup on one feature in a copy of the sample project, plays the
-developer, and writes a result file per run in bench/results/.
+developer, and writes a result file per run in bench/results/. A setup with
+"developer": "haiku" gets its replies from a simulated developer on Haiku,
+who answers from the intent card of the feature.
 Standard library only. Runs on Windows, macOS and Linux.
 
 Usage:
@@ -44,6 +46,40 @@ LIMIT_RE = re.compile(
 )
 QUESTION_RE = re.compile(r"(?m)^\s*\d+\.\s+(Assumption|Conflict|Blocker):")
 GIT_ID = ["-c", "user.name=bench", "-c", "user.email=bench@example.invalid"]
+# [Verify] Against the price list: the price of each token kind, relative to input.
+TOKEN_WEIGHTS = {"input": 1, "cache_write": 1.25, "cache_read": 0.1, "output": 5}
+# The simulated developer: Haiku, no tools, no saved session, no plugin.
+DEVELOPER_FLAGS = [
+    "--output-format", "json",
+    "--model", "haiku",
+    "--tools", "",
+    "--no-session-persistence",
+    "--system-prompt", "You play a software developer. Follow the instructions in the message.",
+]
+DEVELOPER_PROMPT = """You play the developer who asked an AI coding agent for a feature. Your real intent is on the intent card below. The agent never saw the card. Read the last message of the agent, then write your reply to it.
+
+Rules:
+1. Answer only what the message asks. Never mention a fact of the card that the message does not ask about.
+2. When the message asks you to pick an option, pick the option that fits the card. Pick option 1 "Build now" when the brief or the plan matches the card.
+3. When the message proposes work that the card rules out, say no, in one sentence.
+4. When the card does not answer a question, let the agent decide.
+5. {finish}
+6. Write only the reply, in a few short sentences, as the developer. No preamble.
+
+=== INTENT CARD ===
+{intent}
+=== LAST MESSAGE OF THE AGENT ===
+{message}
+"""
+FINISH_RULE = {
+    True: "When the message waits for nothing from you, because it reports finished work and asks no question, reply with exactly the word DONE.",
+    False: "Always write a reply. Never reply DONE.",
+}
+TEST_RULE_RE = re.compile(r"new\s+Date\(\s*\)|\bDate\.now\(|\bcurrentYear\(")
+EXPORT_RE = re.compile(
+    r"(?m)^export\s+(?:declare\s+)?(?:default\s+)?(?:abstract\s+)?(?:async\s+)?"
+    r"(?:class|function\*?|const|let|var|type|interface|enum)\s+([A-Za-z_$][\w$]*)")
+EXPORT_LIST_RE = re.compile(r"(?m)^export\s+(?:type\s+)?\{([^}]*)\}")
 
 
 class LimitReached(Exception):
@@ -208,6 +244,18 @@ def verify_command(sample_config):
     return m.group(1)
 
 
+TAP_TEST_RE = re.compile(r"(?m)^\s*(not )?ok \d+ - (.*?)(?:\s+#\s.*)?\s*$")
+
+
+def tap_results(text):
+    """Map each test name of the TAP output to True (pass) or False (fail)."""
+    out = {}
+    for m in TAP_TEST_RE.finditer(text):
+        name = m.group(2).replace("\\#", "#")
+        out[name] = out.get(name, True) and not m.group(1)
+    return out
+
+
 def run_node_tests(cmd, cwd):
     """Run a node test command with the TAP reporter. Return a figure dict."""
     cmd = cmd.replace("node --test", "node --test --test-reporter=tap", 1)
@@ -216,7 +264,8 @@ def run_node_tests(cmd, cwd):
         encoding="utf-8", errors="replace", timeout=600,
     )
     passed, total = parse_tap(r.stdout)
-    return {"exit_code": r.returncode, "passed": passed, "total": total}
+    return {"exit_code": r.returncode, "passed": passed, "total": total,
+            "tests": tap_results(r.stdout)}
 
 
 # ------------------------------------------------------------ preparation
@@ -274,19 +323,56 @@ def prepare(setup, feature_dir, feature, tmp):
         if r.returncode == 0:
             git(work, "reset", "--hard", first)
 
-    brief_dir = os.path.join(work, "docs", "tasks", "_new")
-    os.makedirs(brief_dir, exist_ok=True)
-    shutil.copyfile(os.path.join(feature_dir, feature["brief"]),
-                    os.path.join(brief_dir, "BRIEF.md"))
+    # A feature in the mode "request" starts from a raw request: no brief.
+    if feature_mode(feature) == "brief":
+        brief_dir = os.path.join(work, "docs", "tasks", "_new")
+        os.makedirs(brief_dir, exist_ok=True)
+        shutil.copyfile(os.path.join(feature_dir, feature["brief"]),
+                        os.path.join(brief_dir, "BRIEF.md"))
     return work, first, guard
+
+
+def feature_mode(feature):
+    return feature.get("mode", "brief")
+
+
+def read_text(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read().strip()
+
+
+def start_message(setup, feature_dir, feature):
+    """The first message of the setup. {request} becomes the text of the request."""
+    message = setup["start"]
+    if "{request}" in message:
+        if "request" not in feature:
+            raise RuntimeError("setup needs a request, and the feature has none")
+        message = message.replace("{request}", read_text(os.path.join(feature_dir, feature["request"])))
+    return message
 
 
 # ------------------------------------------------------------ Claude Code
 
-def next_message(text, setup, last_command, posted=False):
-    """Return (message, kind). message is None when the run stops."""
+def is_done(reply):
+    return re.sub(r"[^A-Za-z]", "", reply or "").upper() == "DONE"
+
+
+def next_message(text, setup, last_command, posted=False, developer=None):
+    """Return (message, kind). message is None when the run stops.
+
+    developer is the simulated developer: a function (message, may_finish)
+    that returns a reply. A setup without the plugin has no marks, so the
+    developer reads each message, and replies DONE when it waits for nothing.
+    A flow setup gets a reply of the developer on each 👉 line.
+    """
     line = last_line(text, skip_fence=True)
+    if developer and not setup["plugin"]:
+        reply = developer(text, True)
+        return (None, "finished") if is_done(reply) or not reply.strip() else (reply, "reply")
     if "\U0001F449" in line:  # 👉
+        if developer:
+            reply = developer(text, False)
+            return (reply, "reply") if reply.strip() else (None, "stop")
         for rule in setup["replies"]:
             if re.search(rule["match"], line):
                 return rule["reply"], "reply"
@@ -300,7 +386,8 @@ def next_message(text, setup, last_command, posted=False):
     if "▶" in line:  # ▶️
         if last_command and last_command.startswith("/flow:build"):
             return None, "finished"
-        m = re.search(r"`(/flow:[^`]+)`", line) or re.search(r"(/flow:\S.*)$", line)
+        # Without backticks, the command ends at a comma: "/flow:build x, in a new session".
+        m = re.search(r"`(/flow:[^`]+)`", line) or re.search(r"(/flow:[^\s,]+(?:\s+[^\s,]+)*)", line)
         if m:
             return m.group(1).strip(), "command"
     return None, "stop"
@@ -328,10 +415,54 @@ def call_claude(message, plugin, session_id, work, browser):
                 "session_id": session_id, "_unparsed": True}
 
 
-def conversation(setup, plugin, work, log, watcher, browser):
-    """Play the developer. Return (results, messages sent)."""
-    results, sent = [], []
-    message, session_id, last_command = setup["start"], None, None
+def simulated_developer(intent, message, may_finish, cwd):
+    """One call of Claude Code on Haiku that answers the agent from the intent card.
+
+    No plugin, no tools, no saved session. cwd is an empty folder, so that no
+    CLAUDE.md loads. Return (reply, JSON result).
+    """
+    claude = shutil.which("claude")
+    if not claude:
+        raise RuntimeError("claude is not on the PATH")
+    prompt = DEVELOPER_PROMPT.format(finish=FINISH_RULE[may_finish], intent=intent,
+                                     message=message)
+    r = subprocess.run(
+        [claude, "-p", *DEVELOPER_FLAGS, *ISOLATION_FLAGS], cwd=cwd, input=prompt,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=CALL_TIMEOUT,
+    )
+    try:
+        res = json.loads(r.stdout)
+    except ValueError:
+        res = {"is_error": True, "result": (r.stdout + r.stderr).strip()}
+    text = res.get("result") or ""
+    if res.get("is_error"):
+        if LIMIT_RE.search(text):
+            raise LimitReached(text)
+        raise RuntimeError("the simulated developer returned an error: " + text[:300])
+    return text.strip(), res
+
+
+def conversation(setup, plugin, work, log, watcher, browser, first_message, intent=None):
+    """Play the developer. Return (results, messages sent, developer results)."""
+    results, sent, dev_results = [], [], []
+    developer = None
+    if setup.get("developer"):
+        if setup["developer"] != "haiku":
+            raise RuntimeError("unknown developer: " + setup["developer"])
+        if intent is None:
+            raise RuntimeError("the simulated developer needs the intent card of the feature")
+        dev_dir = os.path.join(os.path.dirname(work), "developer")
+        os.makedirs(dev_dir, exist_ok=True)
+
+        def developer(text, may_finish):
+            reply, res = simulated_developer(intent, text, may_finish, dev_dir)
+            dev_results.append(res)
+            log.write("=== DEVELOPER ===\n%s\n\n" % reply)
+            log.flush()
+            return reply
+
+    message, session_id, last_command = first_message, None, None
     while message is not None and len(sent) < setup["max_messages"]:
         sent.append(message)
         if message.startswith("/flow:"):
@@ -353,8 +484,9 @@ def conversation(setup, plugin, work, log, watcher, browser):
                 raise LimitReached(text)
             raise RuntimeError("Claude Code returned an error: " + text[:300])
         session_id = res.get("session_id") or session_id
-        message, _kind = next_message(text, setup, last_command, len(watcher.pages) > before)
-    return results, sent
+        message, _kind = next_message(text, setup, last_command, len(watcher.pages) > before,
+                                      developer)
+    return results, sent, dev_results
 
 
 # ------------------------------------------------------------- the figures
@@ -386,6 +518,24 @@ def cost_figures(results):
             add_usage(tokens, model, u.get("inputTokens"), u.get("cacheCreationInputTokens"),
                       u.get("cacheReadInputTokens"), u.get("outputTokens"))
     return tokens, turns, duration
+
+
+def weighted_tokens(tokens):
+    """The tokens of all models, each kind times its weight in TOKEN_WEIGHTS."""
+    return round(sum(u.get(kind, 0) * w for u in tokens.values()
+                     for kind, w in TOKEN_WEIGHTS.items()))
+
+
+def developer_cost(dev_results):
+    """The tokens of the simulated developer. Each call is its own session."""
+    tokens = {}
+    for res in dev_results:
+        for model, u in (res.get("modelUsage") or {}).items():
+            add_usage(tokens, model, u.get("inputTokens"), u.get("cacheCreationInputTokens"),
+                      u.get("cacheReadInputTokens"), u.get("outputTokens"))
+    return {"tokens_by_model": tokens, "calls": len(dev_results),
+            "weighted_tokens": weighted_tokens(tokens),
+            "duration_ms": sum(r.get("duration_ms") or 0 for r in dev_results)}
 
 
 def call_figures(results):
@@ -510,7 +660,64 @@ def brief_figures(work):
     }
 
 
-def quality_and_workflow(setup_name, work, first, feature_dir, feature, verify_cmd,
+def exported_names(text):
+    names = set(EXPORT_RE.findall(text))
+    for group in EXPORT_LIST_RE.findall(text):
+        for item in group.split(","):
+            item = item.strip()
+            if item:
+                names.add(re.split(r"\s+as\s+", item)[-1].strip())
+    return names
+
+
+def src_exports(work, rev=None):
+    """The exported symbols of the .ts files in src/, at a commit or in the work tree."""
+    names = set()
+    if rev:
+        files = git(work, "ls-tree", "-r", "--name-only", rev, "src").stdout.split()
+        for p in files:
+            if p.endswith(".ts"):
+                names |= exported_names(git(work, "show", rev + ":" + p).stdout)
+    else:
+        for p in glob.glob(os.path.join(work, "src", "**", "*.ts"), recursive=True):
+            with open(p, encoding="utf-8", errors="replace") as f:
+                names |= exported_names(f.read())
+    return names
+
+
+def test_rule_violations(work, first):
+    """Lines that a new or changed test file adds, and that read the real date."""
+    bad = []
+    diff = git(work, "diff", first, "--", "test").stdout
+    current = None
+    for line in diff.splitlines():
+        if line.startswith("+++ "):
+            current = line[6:] if line.startswith("+++ b/") else None
+        elif line.startswith("+") and current and TEST_RULE_RE.search(line):
+            bad.append("%s: %s" % (current, line[1:].strip()))
+    untracked = git(work, "ls-files", "--others", "--exclude-standard", "--", "test").stdout.split("\n")
+    for rel in (u for u in untracked if u.endswith(".ts")):
+        with open(os.path.join(work, rel), encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if TEST_RULE_RE.search(line):
+                    bad.append("%s: %s" % (rel, line.strip()))
+    return bad
+
+
+def trap_figures(feature, hidden):
+    """For each trap: caught when all its hidden tests pass."""
+    results = {}
+    for h in hidden:
+        results.update(h.get("tests") or {})
+    traps = []
+    for trap in feature.get("traps", []):
+        tests = {name: results.get(name, False) for name in trap["tests"]}
+        traps.append({"id": trap["id"], "kind": trap["kind"],
+                      "caught": all(tests.values()), "tests": tests})
+    return traps
+
+
+def quality_and_workflow(setup, work, first, feature_dir, feature, verify_cmd,
                          texts, apply_reference):
     if apply_reference:
         git(work, "apply", os.path.join(feature_dir, feature["reference"]))
@@ -524,6 +731,14 @@ def quality_and_workflow(setup_name, work, first, feature_dir, feature, verify_c
     quality["files_changed"] = changed
     quality["files_outside_allowed"] = [f for f in changed if not any(a.match(f) for a in allowed)]
 
+    # Before the copy of the hidden tests, which are not the work of the agent.
+    violations = test_rule_violations(work, first)
+    quality["test_rule_followed"] = not violations
+    quality["test_rule_violations"] = violations
+    if "exports" in feature:
+        extra = src_exports(work) - src_exports(work, first) - set(feature["exports"])
+        quality["extra_exports"] = sorted(extra)
+
     hidden = []
     for src, dest in feature["hidden_tests"].items():
         target = os.path.join(work, dest)
@@ -531,21 +746,27 @@ def quality_and_workflow(setup_name, work, first, feature_dir, feature, verify_c
         shutil.copyfile(os.path.join(feature_dir, src), target)
         r = run_node_tests("node --test " + dest, work)
         hidden.append({"file": dest, "passed": r["passed"], "total": r["total"],
-                       "exit_code": r["exit_code"]})
+                       "exit_code": r["exit_code"], "tests": r["tests"]})
     quality["hidden_tests"] = hidden
     quality["hidden_passed"] = sum(h["passed"] or 0 for h in hidden)
     quality["hidden_total"] = sum(h["total"] or 0 for h in hidden)
+    if feature.get("traps"):
+        traps = trap_figures(feature, hidden)
+        quality["traps"] = traps
+        quality["traps_caught"] = sum(t["caught"] for t in traps)
+        quality["traps_total"] = len(traps)
 
     subjects = [s for s in git(work, "log", "--all", "--not", first, "--format=%s").stdout.split("\n") if s]
     workflow = {"commits": len(subjects), "commit_subjects": subjects}
-    lean = setup_name == "lean"
-    if not lean:
+    if setup["plugin"]:
         workflow.update(brief_figures(work))
-    body = texts[:-1] if lean else texts
-    bad = [i + 1 for i, t in enumerate(body)
-           if not any(mark in last_line(t) for mark in ("\U0001F449", "▶", "\U0001F440"))]
-    workflow["last_line_violations"] = len(bad)
-    workflow["last_line_violation_messages"] = bad
+        bad = [i + 1 for i, t in enumerate(texts)
+               if not any(mark in last_line(t) for mark in ("\U0001F449", "▶", "\U0001F440"))]
+        workflow["last_line_violations"] = len(bad)
+        workflow["last_line_violation_messages"] = bad
+    else:
+        # A setup without the plugin has no last-line rule.
+        workflow["last_line_violations"] = None
     workflow["questions"] = sum(len(QUESTION_RE.findall(t)) for t in texts)
     return figures, quality, workflow
 
@@ -558,19 +779,22 @@ def run_one(args, setup, feature_dir, feature, run_id, verify_cmd, plugin):
     tmp = tempfile.mkdtemp(prefix="flow-bench-")
     log_path = os.path.join(RESULTS, run_id + (".dry-run.log" if args.dry_run else ".log"))
     result_path = os.path.join(RESULTS, run_id + (".dry-run.json" if args.dry_run else ".json"))
-    results, sent = [], []
+    results, sent, dev_results = [], [], []
     exit_code = 0
     watcher = ReviewWatcher(tmp)
     try:
         work, first, guard = prepare(setup, feature_dir, feature, tmp)
+        first_message = start_message(setup, feature_dir, feature)
+        intent = read_text(os.path.join(feature_dir, feature["intent"])) if "intent" in feature else None
         with open(log_path, "w", encoding="utf-8", newline="\n") as log:
             if args.dry_run:
-                log.write("dry run: Claude Code skipped\n")
+                log.write("dry run: Claude Code skipped\nfirst message:\n%s\n" % first_message)
             else:
                 browser = make_fake_browser(tmp)
                 watcher.start()
                 try:
-                    results, sent = conversation(setup, plugin, work, log, watcher, browser)
+                    results, sent, dev_results = conversation(
+                        setup, plugin, work, log, watcher, browser, first_message, intent)
                 except LimitReached as e:
                     status, reason, exit_code = "stopped", "usage limit: " + str(e)[:300], 2
                 except subprocess.TimeoutExpired:
@@ -581,7 +805,8 @@ def run_one(args, setup, feature_dir, feature, run_id, verify_cmd, plugin):
                     watcher.stop_event.set()
         record = {
             "run_id": run_id, "status": "dry-run" if args.dry_run and status == "done" else status,
-            "setup": args.setup, "feature": args.feature,
+            "setup": args.setup, "feature": args.feature, "mode": feature_mode(feature),
+            "developer": setup.get("developer"),
             "date": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
             "plugin_folder": plugin if setup["plugin"] else None,
             "flags": BASE_FLAGS + ISOLATION_FLAGS + (["--plugin-dir", "<plugin folder>"] if setup["plugin"] else []),
@@ -608,15 +833,20 @@ def run_one(args, setup, feature_dir, feature, run_id, verify_cmd, plugin):
                 session = session_figures(ids, tokens)
             session["sessions"] = len(ids)
             figures, quality, workflow = quality_and_workflow(
-                args.setup, work, first, feature_dir, feature, verify_cmd, texts,
+                setup, work, first, feature_dir, feature, verify_cmd, texts,
                 args.apply_reference)
             record["messages_sent"] = len(sent)
             workflow["review_pages"] = watcher.pages
+            # tokens_by_model holds the agent only. The simulated developer counts apart.
             record["cost"] = {
-                "tokens_by_model": tokens, "turns": turns, "duration_ms": duration,
+                "tokens_by_model": tokens, "weighted_tokens": weighted_tokens(tokens),
+                "token_weights": TOKEN_WEIGHTS,
+                "turns": turns, "duration_ms": duration,
                 "wall_seconds": round(time.time() - started, 1), **session,
                 "calls": call_figures(results),
             }
+            if setup.get("developer"):
+                record["cost"]["developer"] = developer_cost(dev_results)
             record["quality"] = quality
             record["workflow"] = workflow
             record.update(figures)

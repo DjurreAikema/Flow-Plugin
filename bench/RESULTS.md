@@ -2,7 +2,104 @@
 
 Date: 7 November 2026
 
-This file records the results of the benchmark runs of the feature `holds`, one section per round. The result files stay in `bench/results/`, and git ignores that folder. `bench/README.md` explains the setups, the figures and the commands.
+This file records the results of the benchmark runs, one section per round. Rounds 1 and 2 ran the feature `holds`. Round 3 also ran the feature `closing`. The result files stay in `bench/results/`, and git ignores that folder. `bench/README.md` explains the setups, the figures and the commands.
+
+## Round 3: a raw request with traps, 7 November 2026
+
+### The runs
+
+- Features: `holds` with its ready brief, as the control, and `closing`, a raw request with 3 traps. `bench/README.md` describes the traps.
+- Setups: `lean` and `flow-thin` on `holds`. `lean-raw` and `flow` on `closing`. Each setup ran 3 times, with Claude Code 2.1.318 and the model `opus`. The simulated developer of `lean-raw` and `flow` ran on `haiku`.
+- Plugin: the files of `plugins/flow/` at commit `e9ad7ed` (task 0014). The result files record the branch commit `9ebb080`, which has the same plugin files.
+- Driver: the first run, `flow-closing-1`, sent the command `/flow:build docs/tasks/_new, in a new session`, because the ▶️ line had no backticks. The build ran as normal. The driver now ends the command at the comma. The other 11 runs used the fixed driver.
+- The round 2 result files moved to `bench/results/2026-11-07-round-2/`, so that `lean` and `flow-thin` ran again.
+
+### Report
+
+The output of `python bench/report.py`.
+
+#### Runs
+
+| Setup | Run ID | Tokens per model | Weighted | Developer | Turns | Wall time (s) | Hidden tests | Traps | Extra exports | Test rule | Verify | Files outside | Commits | Parts | Last-line errors | Questions | Step builders |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| lean | lean-holds-1 | opus 1.3M | 343.1k | - | 44 | 208.8 | 25/25 | - | - | yes | pass | 0 | 3 | - | - | 0 | 0 |
+| lean | lean-holds-2 | opus 1.7M | 391.1k | - | 43 | 208.0 | 25/25 | - | - | yes | pass | 0 | 3 | - | - | 0 | 0 |
+| lean | lean-holds-3 | opus 1.5M | 385.0k | - | 49 | 221.8 | 25/25 | - | - | yes | pass | 0 | 3 | - | - | 0 | 0 |
+| flow-thin | flow-thin-holds-1 | opus 2.3M | 455.5k | - | 56 | 249.9 | 25/25 | - | - | yes | pass | 0 | 5 | 3 | 0 | 0 | 0 |
+| flow-thin | flow-thin-holds-2 | opus 2.4M | 450.1k | - | 56 | 229.6 | 25/25 | - | - | yes | pass | 0 | 5 | 3 | 0 | 0 | 0 |
+| flow-thin | flow-thin-holds-3 | opus 2.7M | 494.7k | - | 58 | 247.1 | 25/25 | - | - | yes | pass | 0 | 5 | 3 | 0 | 0 | 0 |
+| lean-raw | lean-raw-closing-1 | opus 1.1M | 218.5k | 6.1k | 31 | 139.8 | 11/14 | 2 of 3 | 2 | yes | pass | 0 | 3 | - | - | 0 | 0 |
+| lean-raw | lean-raw-closing-2 | opus 1.8M | 321.7k | 7.2k | 42 | 196.8 | 11/14 | 2 of 3 | 1 | yes | pass | 0 | 6 | - | - | 0 | 0 |
+| lean-raw | lean-raw-closing-3 | opus 1.1M | 224.7k | 6.7k | 38 | 137.4 | 14/14 | 3 of 3 | 0 | yes | pass | 0 | 3 | - | - | 0 | 0 |
+| flow | flow-closing-1 | opus 1.5M | 374.3k | 9.3k | 54 | 217.4 | 14/14 | 3 of 3 | 0 | yes | pass | 0 | 5 | 3 | 0 | 0 | 0 |
+| flow | flow-closing-2 | opus 1.9M | 417.6k | 9.4k | 56 | 243.9 | 14/14 | 3 of 3 | 0 | yes | pass | 0 | 5 | 3 | 0 | 0 | 0 |
+| flow | flow-closing-3 | opus 1.9M | 412.1k | 5.9k | 54 | 227.9 | 14/14 | 3 of 3 | 0 | yes | pass | 0 | 5 | 3 | 0 | 0 | 0 |
+
+#### Setups
+
+Each cell is `median (minimum to maximum)`. The row "total tokens against lean" compares `flow-thin` with `lean`, and `lean-raw` and `flow` with `lean-raw`. "total tokens" leaves out the simulated developer.
+
+| Figure | lean | flow-thin | lean-raw | flow |
+|---|---|---|---|---|
+| total tokens | 1.5M (1.3M to 1.7M) | 2.4M (2.3M to 2.7M) | 1.1M (1.1M to 1.8M) | 1.9M (1.5M to 1.9M) |
+| total tokens against lean | 1.0x | 1.6x | 1.0x | 1.6x |
+| weighted tokens | 385.0k (343.1k to 391.1k) | 455.5k (450.1k to 494.7k) | 224.7k (218.5k to 321.7k) | 412.1k (374.3k to 417.6k) |
+| developer tokens | - | - | 6679 (6072 to 7154) | 9342 (5897 to 9429) |
+| output tokens | 25854 (25081 to 27693) | 26856 (26575 to 28243) | 12032 (11151 to 15577) | 20629 (20540 to 21974) |
+| turns | 44 (43 to 49) | 56 (56 to 58) | 38 (31 to 42) | 54 (54 to 56) |
+| wall time (s) | 208.8 (208 to 221.8) | 247.1 (229.6 to 249.9) | 139.8 (137.4 to 196.8) | 227.9 (217.4 to 243.9) |
+| sessions | 1 (1 to 1) | 1 (1 to 1) | 1 (1 to 1) | 2 (2 to 2) |
+| hidden tests passed | 25 (25 to 25) | 25 (25 to 25) | 11 (11 to 14) | 14 (14 to 14) |
+| verify passed (1 = yes) | 1 (1 to 1) | 1 (1 to 1) | 1 (1 to 1) | 1 (1 to 1) |
+| files outside allowed | 0 (0 to 0) | 0 (0 to 0) | 0 (0 to 0) | 0 (0 to 0) |
+| traps caught | - | - | 2 of 3 (2 to 3) | 3 of 3 (3 to 3) |
+| extra exports | - | - | 1 (0 to 2) | 0 (0 to 0) |
+| test rule followed (1 = yes) | 1 (1 to 1) | 1 (1 to 1) | 1 (1 to 1) | 1 (1 to 1) |
+| commits | 3 (3 to 3) | 5 (5 to 5) | 3 (3 to 6) | 5 (5 to 5) |
+| parts | - | 3 (3 to 3) | - | 3 (3 to 3) |
+| last-line errors | - | 0 (0 to 0) | - | 0 (0 to 0) |
+| questions | 0 (0 to 0) | 0 (0 to 0) | 0 (0 to 0) | 0 (0 to 0) |
+| step builders | 0 (0 to 0) | 0 (0 to 0) | 0 (0 to 0) | 0 (0 to 0) |
+
+### Context per request
+
+The main sessions of each run, from the session logs of Claude Code. A `flow` run has 2 sessions: `/flow:discuss`, then `/flow:build`.
+
+| Run | Requests | Context at the start | Median context | Context at the end |
+|-----|----------|----------------------|----------------|--------------------|
+| lean-holds-1 | 16 | 36k | 84k | 104k |
+| lean-holds-2 | 20 | 36k | 90k | 106k |
+| lean-holds-3 | 18 | 36k | 87k | 111k |
+| flow-thin-holds-1 | 28 | 39k | 85k | 107k |
+| flow-thin-holds-2 | 30 | 39k | 84k | 98k |
+| flow-thin-holds-3 | 32 | 39k | 93k | 103k |
+| lean-raw-closing-1 | 18 | 36k | 64k | 73k |
+| lean-raw-closing-2 | 27 | 36k | 69k | 82k |
+| lean-raw-closing-3 | 16 | 36k | 71k | 79k |
+| flow-closing-1 | 9 + 14 | 40k, 39k | 66k, 66k | 77k, 87k |
+| flow-closing-2 | 10 + 17 | 40k, 39k | 69k, 81k | 78k, 87k |
+| flow-closing-3 | 7 + 21 | 40k, 39k | 71k, 70k | 82k, 80k |
+
+### Findings
+
+1. `flow` caught 3 of 3 traps in each run. `lean-raw` caught 3 of 3 in 1 run, and 2 of 3 in 2 runs. Quality now separates the setups.
+2. `lean-raw` missed the same trap twice: `open-obligations`. In runs 1 and 2 it built first and asked later. It chose a limit of $5.00 by itself, and closed the account above that limit, with the debt left open. The developer was not asked, so the developer did not correct it.
+3. `lean-raw` run 3 asked 4 questions before it wrote code, and caught every trap. Asking first is what catches the traps, and `/flow:discuss` makes it the rule: each `flow` run asked 6 questions in one round, before any code.
+4. `lean-raw` added exports that the intent card rules out: `CLOSE_WRITE_OFF_LIMIT_CENTS` and `CloseResult` in run 1, and `CloseResult` in run 2. Run 2 also built a report of closed accounts. It removed the report after the developer said no, and kept `CloseResult`. `flow` added no extra export.
+5. Both setups found `docs/RULES.md` and kept the ledger append-only in every run. `lean` reads the rule without a pointer in `CLAUDE.md`. The `append-only` trap is the easiest of the three.
+6. `flow` costs 1.6x of `lean-raw` in total tokens: 1.9M against 1.1M. In weighted tokens it costs 1.8x: 412k against 225k. `flow` also makes more output: 21k against 12k. It writes a brief and a pull request description.
+7. `flow-thin` costs 1.6x of `lean` in total tokens on `holds`, against 1.3x in round 2. In weighted tokens it costs 1.2x: 456k against 385k. Most of the extra tokens are cache reads, which cost one tenth of input. [Verify] the cause of the rise from 2.1M to 2.4M. The sample now has `docs/RULES.md` and a test rule.
+8. The simulated developer costs little: 6k to 9k tokens per run, and 3 to 6 percent of the weighted tokens of the run.
+9. The simulated developer sometimes says more than the message asks. In `lean-raw-closing-2` and `lean-raw-closing-3` it corrected choices that the agent described but did not ask about, for example the new constant. In `flow-closing-3` it ended its answers with "Go ahead and build it", and `/flow:discuss` wrote the brief without the option question.
+10. Every run of all four setups followed the test rule, passed the verify command and changed no file outside the allowed list. `lean` and `flow-thin` passed 25 of 25 hidden tests of `holds`, as in rounds 1 and 2.
+11. The figure "questions" stays 0 for every setup. `QUESTION_RE` counts the old "Assumption", "Conflict" and "Blocker" items, and `/flow:discuss` and `lean-raw` now ask in other forms. The 👉 lines and the logs show the real questions.
+
+### Limits
+
+- 3 runs per setup. A difference of 1 trap in 1 run is a weak signal.
+- One feature with traps, written by the same person who wrote the intent card. Each trap is fair by design, but a human must confirm it.
+- The simulated developer on Haiku does not always keep to its rules (finding 9). A real developer can answer differently.
+- `lean-raw` stops when the developer replies `DONE`. A real developer can read the summary of `lean-raw-closing-1` and ask about the limit.
 
 ## Round 2: thin flow, 7 November 2026
 
