@@ -78,3 +78,14 @@ Added: The benchmark has the feature `closing`, with a raw request, an intent ca
 
 ## Open questions
 none
+
+## Outcome
+
+| What changed | Why | What it affects |
+|--------------|-----|-----------------|
+| The reference patch of `closing` changes `members.ts`, `loans.ts` and `fees.ts`, not `reports.ts`. `reports.ts` stays in the allowed files. | The intent card rules out a change to the reports. The scope trap lies in `reports.ts`: a report of who left. The extra exports show it. | Decision 1. |
+| The test rule reads only the lines that a run adds to a test file, and every line of a new test file. | The existing `test/catalog.test.ts` calls `currentYear()`. A check of the whole changed file flags every run that changes it, for example `holds`. | Decision 10, `bench/README.md`. |
+| `flow` starts `/flow:build` in a new session with the existing field `"fresh_session": true`. `next_message` has no new code for it. | The field does the same thing. | The map entry of `next_message`. |
+| A setup without the plugin records no last-line figure. The report shows `-` for `lean` and `lean-raw`, not 0. | Such a setup has no last-line rule. The replies of `lean-raw` made each message count as a violation. | The rows "last-line errors" of `bench/RESULTS.md`. |
+| Part 4 also changes `bench/run.py`: a command on a ▶️ line without backticks ends at a comma. | The first run sent `/flow:build docs/tasks/_new, in a new session`. The build ran as normal. | `flow-closing-1`. The other 11 runs used the fix. |
+| The round 2 result files moved to `bench/results/2026-11-07-round-2/`. | The driver skips a run with a done result file, so `lean` and `flow-thin` did not run again. Git ignores the folder. | The local results folder only. |
