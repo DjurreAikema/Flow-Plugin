@@ -22,6 +22,7 @@ Version 0.x of the plugin does these things:
 6. Works for one developer and for a team.
 7. Keeps the long-term goals of a project in a roadmap of milestones and cards, written by `/flow:roadmap` from client requests.
 8. Makes a release with `/flow:release`, by a recipe that each project writes in a setup conversation.
+9. Keeps the test plan of a project in `docs/workflow/TESTING.md`, written by `/flow:test-plan` in a setup conversation.
 
 Out of scope for now:
 
@@ -128,7 +129,7 @@ The repository is a marketplace with one plugin, and it uses the workflow on its
 | 38 | 7 November 2026 | Agents mode, the step builder and the setting "Mode threshold" are removed. | Agents mode cost the most tokens in the benchmark. It saved tokens only with a new session per skill, and then only 7 percent (task 0011). |
 | 39 | 7 November 2026 | Each skill holds the rules that it needs. No skill reads `reference/WORKFLOW.md`, `reference/GIT.md` or `reference/WRITING_STYLE.md` when it runs. `/flow:adopt` and `/flow:tutorial` still read the workflow guide and the git guide. | Every request reads the whole context again, so each read file costs tokens many times. Adopt and tutorial explain the whole workflow, and run rarely (task 0012). |
 | 40 | 7 November 2026 | The record of a task is its archived brief. The build adds a section "Outcome" only when the task has deviations. The pull request holds the deviations, a summary, the coverage and the human checklist. | Step files and status edits cost a request each. The diff and the pull request show the rest (task 0012). |
-| 41 | 7 November 2026 | `/flow:discuss` reads the scope document and the decision log, and plans the tests by the section "Testing" of the config. It asks before it plans a test for an untested function that the work changes. | `/flow:plan-task` did this before. The brief is now the only plan (task 0012). |
+| 41 | 7 November 2026 | `/flow:discuss` reads the scope document and the decision log, and plans the tests by the test plan. It asks before it plans a test for an untested function that the work changes. Replaced in part by decision 43. | `/flow:plan-task` did this before. The brief is now the only plan (task 0012). |
 | 42 | 7 November 2026 | `/flow:release` is a core skill. Its first run talks the release through with the developer, and writes a recipe to `docs/workflow/RELEASE.md` through a pull request. Later runs follow the recipe. The recipe decides every step and every stop. The branch guard stays. | The release stays specific to the project, because the project writes its own recipe. The plugin holds only the conversation and the engine (task 0013). |
 | 43 | 7 November 2026 | `/flow:test-plan` writes the test plan of a project to `docs/workflow/TESTING.md`, through a pull request. The developer sets every rule in a conversation. `none`, `critical` and `logic` are presets. `/flow:adopt` writes the first plan from a preset. Only `/flow:discuss` reads the plan. | Each project needs its own test rules, and one of three levels gave too little control. The build stays lean, because the brief carries the tests. |
 

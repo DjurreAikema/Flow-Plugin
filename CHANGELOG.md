@@ -9,6 +9,9 @@ The changelog of the `flow` plugin. The format follows [Keep a Changelog](https:
 ### Added
 - `/flow:release` makes a release in the way of the project. Its first run talks the release through with the developer, and writes a recipe to `docs/workflow/RELEASE.md` through a pull request. Later runs follow the recipe, and `/flow:release setup` changes it. A project with a config can add the line `Release: none` under "Records". Task: [0013-release-skill](docs/tasks/_archive/0013-release-skill/BRIEF.md).
 
+### Changed
+- `/flow:test-plan` sets up the tests of the project in a conversation, and writes the test plan to `docs/workflow/TESTING.md` through a pull request. `none`, `critical` and `logic` are now presets. `/flow:discuss` plans the tests by the plan. `/flow:adopt` writes a first plan. A project with a config runs `/flow:test-plan`, which starts from its "Rule" and "Types". The pull request replaces them with the line `Test plan: docs/workflow/TESTING.md`. Task: [0014-test-plan](docs/tasks/_archive/0014-test-plan/BRIEF.md).
+
 ## [0.1.0] - 2026-11-07
 
 ### Added

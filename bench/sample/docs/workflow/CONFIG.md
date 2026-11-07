@@ -22,11 +22,9 @@ The choices of this project for the `flow` workflow. The skills read this file. 
 - Coverage: none
 
 ## Testing
-The automated tests of the project. The workflow guide explains each setting (`reference/WORKFLOW.md` section 7).
+The automated tests of the project. `/flow:test-plan` writes the plan (`reference/WORKFLOW.md` section 7).
 
-- Rule: logic
-- Types:
-  - unit: one function or class, in memory. `node --test "test/**/*.test.ts"`
+- Test plan: docs/workflow/TESTING.md
 
 ## Docs
 The documents that the agent reads before it plans. Write "none" for a document that the project does not have.
