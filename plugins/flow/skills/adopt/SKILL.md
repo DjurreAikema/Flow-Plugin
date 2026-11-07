@@ -50,7 +50,7 @@ Testing
    Coverage         <command or none>          <source>
 
 Defaults
-   Task ID slug · Changelog none · Writing style none
+   Task ID slug · Changelog none · Writing style none · Release none
    Scope, roadmap, decision log, project rules: none
 
 Branch guard
@@ -150,7 +150,8 @@ Use these facts in your directions and your view:
 - **Host:** `github` and `azure-devops` let the agent open pull requests and read comments. Every other host is `other`: the agent pushes, and the developer opens the pull request by hand.
 - **Branch guard:** always on. It is not a choice. Host protection, such as a branch policy, adds a guard on the server.
 - **Roadmap:** `none` by default. A project that plans client requests over months runs `/flow:roadmap` after the setup. It writes `docs/roadmap/` and sets this setting. An existing roadmap document of the project stays a design document: name it under "Design".
-- **Project-specific features:** releases, a tracker, patch notes and similar records are not part of the plugin. A project adds them as project rules, or builds a project skill for them with a task.
+- **Releases:** the setup does not ask about releases. `/flow:release` sets up the release of the project later, with its own conversation.
+- **Project-specific features:** a tracker, patch notes and similar records are not part of the plugin. A project adds them as project rules, or builds a project skill for them with a task.
 - **Testing:** `none` writes no automated tests. `critical` tests only high-impact logic, and suits most projects with tests. `logic` tests every function with a branch, a calculation or a rule, at a higher cost per task. The project names its own test types, because they differ per stack. The coverage command reports the changed lines only. It never blocks a task.
 - **Writing style:** `ste` makes the workflow documents short and exact. A team that does not want it picks `none`.
 - **Existing agent rules:** when `CLAUDE.md` or `AGENTS.md` exists, add the workflow rules to it. Never remove the rules that are there.
@@ -159,7 +160,7 @@ Use these facts in your directions and your view:
 
 1. Show a short summary of every setting and every file that you will write or change. End the message with `👉 Reply "go" to write this setup through a pull request, or name the changes.` Wait for the reply. After the quick setup, skip this step: its block is the summary.
 2. Update the base branch from `origin`. Create the branch `feature/adopt-flow` with the command of `${CLAUDE_PLUGIN_ROOT}/reference/GIT.md`.
-3. Write `docs/workflow/CONFIG.md` from `${CLAUDE_PLUGIN_ROOT}/templates/CONFIG.md`. Remove the comments of settings that do not apply.
+3. Write `docs/workflow/CONFIG.md` from `${CLAUDE_PLUGIN_ROOT}/templates/CONFIG.md`. Remove the comments of settings that do not apply. Write `Release: none` under "Records".
 4. Write `AGENTS.md` from `${CLAUDE_PLUGIN_ROOT}/templates/AGENTS.md`. When `AGENTS.md` exists, add a "Workflow" section instead. When `CLAUDE.md` exists without `AGENTS.md`, add the section to `CLAUDE.md`. When neither exists, also write `CLAUDE.md` with the one line `@AGENTS.md`.
 5. Create `docs/tasks/_backlog/` and `docs/tasks/_archive/`, each with a `README.md` of one or two sentences, so that git keeps the folders.
 6. With the changelog `direct`: when no changelog file exists, create it with an empty `Unreleased` section.

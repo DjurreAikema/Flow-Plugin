@@ -42,8 +42,9 @@ The documents that the agent reads before it plans. Write "none" for a document 
 - Changelog: <direct | none>
 - Changelog file: CHANGELOG.md
 - Writing style: <ste | none | path to the project style>
+- Release: <`docs/workflow/RELEASE.md` | none. `/flow:release` writes the recipe.>
 
 ## Project rules
-Rules that only this project has. The agent follows them like the rules of `AGENTS.md`. Examples: terms of the project, a release process.
+Rules that only this project has. The agent follows them like the rules of `AGENTS.md`. Example: terms of the project.
 
 - <rule>

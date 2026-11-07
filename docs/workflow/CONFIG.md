@@ -35,11 +35,12 @@ The choices of this repository for the `flow` workflow. This repository holds th
 - Changelog: direct
 - Changelog file: CHANGELOG.md
 - Writing style: ste
+- Release: docs/workflow/RELEASE.md
 
 ## Project rules
 1. The plugin in `plugins/flow/` must stay generic. Never name a project that uses it, a person, or a team in the plugin files. Examples in the plugin use neutral subjects.
 2. Every skill reads the plugin files through `${CLAUDE_PLUGIN_ROOT}`. The verify script checks that each such path exists.
 3. A command for a host that nobody tested has the `[Verify]` marker. Remove the marker only after a real project ran the command.
 4. Test a change of a skill by running it on a test project, as a review checklist item.
-5. Release rule: the project skill `/release` (`.claude/skills/release/SKILL.md`) makes a release. It sets `version` in `plugins/flow/.claude-plugin/plugin.json` to the new version number, in the release commit. Users stay on that version until the next release.
+5. Release rule: `/flow:release` makes a release, by the recipe `docs/workflow/RELEASE.md`. It sets `version` in `plugins/flow/.claude-plugin/plugin.json` to the new version number, in the release commit. Users stay on that version until the next release.
 6. A skill change that changes how a project must be set up needs an entry under "Changed" that says what a project must do.

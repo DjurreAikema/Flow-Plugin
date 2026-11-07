@@ -31,7 +31,7 @@ This repository holds `flow`, a Claude Code plugin that runs a fenced, documente
 |---------|-----|
 | `sh tools/verify.sh` | Validate the plugin and check its paths, style and hooks. Exit code 0 means pass. |
 | `git config core.hooksPath tools/git-hooks` | One-time setup of a clone. It switches on the branch guard. |
-| `/release` | Make a release of the plugin. A project skill of this repository. |
+| `/flow:release` | Make a release of the plugin, by the recipe `docs/workflow/RELEASE.md`. |
 | `python bench/run.py --setup <setup> --plugin plugins/flow --runs 3` | Run the benchmark for one setup. It uses the Claude subscription of the developer. See `bench/README.md`. |
 | `python bench/report.py` | Print the report of the finished benchmark runs. |
 | `sh tools/cloud-setup.sh` | Set up a Claude Code cloud session: install the plugin of this working tree and switch on the branch guard. The SessionStart hook in `.claude/settings.json` calls it. |

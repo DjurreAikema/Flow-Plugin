@@ -21,11 +21,12 @@ Version 0.x of the plugin does these things:
 5. Gives extra support to two hosts: `github` and `azure-devops`. On every other host, the developer opens the pull request by hand.
 6. Works for one developer and for a team.
 7. Keeps the long-term goals of a project in a roadmap of milestones and cards, written by `/flow:roadmap` from client requests.
+8. Makes a release with `/flow:release`, by a recipe that each project writes in a setup conversation.
 
 Out of scope for now:
 
 - Extra support for GitLab, Bitbucket and other hosts. They work through the manual pull request. Add a host guide when a real project needs it.
-- Releases, version numbers, trackers, changelog fragments, and extra records such as patch notes. They are specific to a project. A project adds them as project rules, or builds a project skill for them with a task.
+- Trackers, changelog fragments, and extra records such as patch notes. They are specific to a project. A project adds them as project rules, or builds a project skill for them with a task.
 - Extension points, through which the skills of the plugin call the project skills.
 - A migration skill for projects that have the old project-skill version of the workflow.
 - An analysis of the features of an existing application. A separate plugin can write such a report, and `/flow:roadmap` reads it like any other input.
@@ -60,7 +61,7 @@ The host part is small: open a pull request, read its comments, reply. A guide p
 
 The branch guard is two git hooks. `pre-commit` refuses a commit on the base branch, and `pre-push` refuses a push to it. The project imposes the guard on itself, so it works on every host and every plan. Host protection, such as a branch policy, adds a guard on the server.
 
-Version 0.1.0 had git models (`trunk`, `git-flow`) and a setting for branch protection. Task 0001 removed them. A git flow project sets its base branch to `develop`. Task 0003 made the git hooks core and removed the releases from the plugin.
+Version 0.1.0 had git models (`trunk`, `git-flow`) and a setting for branch protection. Task 0001 removed them. A git flow project sets its base branch to `develop`. Task 0003 made the git hooks core and removed the releases from the plugin. Decision 42 brought the releases back, as a recipe per project.
 
 ### 3.4 The roadmap
 
@@ -101,7 +102,7 @@ The repository is a marketplace with one plugin, and it uses the workflow on its
 | 12 | 28 October 2026 | The settings "Model" and "Branch protection" are removed. One guide `reference/GIT.md` replaces `reference/git/`. | A git flow project is a project with the base branch `develop`. |
 | 13 | 28 October 2026 | `/flow:adopt` starts with a quick setup: the found values and a default for every other setting, in one block. Without a build or test command, it suggests `git diff --check` as the verify command. The full conversation of decision 6 stays available. | A new project can run its first task after one approval. Every setting can change later (task 0002). |
 | 14 | 2 November 2026 | The branch guard is core. `/flow:adopt` always installs the git hooks. `pre-push` refuses every push to the base branch. A project cannot switch the hooks off. | The main goal of the plugin is the loop from discuss to pull request with a guarded base branch. A guard that a project can switch off is an extra (task 0003). |
-| 15 | 2 November 2026 | `/flow:release`, the SemVer rules and the changelog style `fragments` are removed. The changelog styles are `direct` and `none`. | How a project releases is specific to the project. Only a release collects fragments (task 0003). |
+| 15 | 2 November 2026 | `/flow:release`, the SemVer rules and the changelog style `fragments` are removed. The changelog styles are `direct` and `none`. The release part is replaced by decision 42. | How a project releases is specific to the project. Only a release collects fragments (task 0003). |
 | 16 | 2 November 2026 | Azure Boards, the "Tracker" section, the task ID `work-item` and `AB#` are removed. | A tracker is specific to a project. A project rule restores the commit link (task 0003). |
 | 17 | 2 November 2026 | Extra records and milestones are removed. The roadmap stays as a read-only document of the config. Replaced by decision 26. | Records and milestones are specific to a project. Reading a roadmap is generic (task 0003). |
 | 18 | 2 November 2026 | A project adds a removed feature with project rules and project skills. The plugin has no extension points. | The loop can build a project skill. Extension points are a design to maintain without a real need (task 0003). |
@@ -128,6 +129,7 @@ The repository is a marketplace with one plugin, and it uses the workflow on its
 | 39 | 7 November 2026 | Each skill holds the rules that it needs. No skill reads `reference/WORKFLOW.md`, `reference/GIT.md` or `reference/WRITING_STYLE.md` when it runs. `/flow:adopt` and `/flow:tutorial` still read the workflow guide and the git guide. | Every request reads the whole context again, so each read file costs tokens many times. Adopt and tutorial explain the whole workflow, and run rarely (task 0012). |
 | 40 | 7 November 2026 | The record of a task is its archived brief. The build adds a section "Outcome" only when the task has deviations. The pull request holds the deviations, a summary, the coverage and the human checklist. | Step files and status edits cost a request each. The diff and the pull request show the rest (task 0012). |
 | 41 | 7 November 2026 | `/flow:discuss` reads the scope document and the decision log, and plans the tests by the section "Testing" of the config. It asks before it plans a test for an untested function that the work changes. | `/flow:plan-task` did this before. The brief is now the only plan (task 0012). |
+| 42 | 7 November 2026 | `/flow:release` is a core skill. Its first run talks the release through with the developer, and writes a recipe to `docs/workflow/RELEASE.md` through a pull request. Later runs follow the recipe. The recipe decides every step and every stop. The branch guard stays. | The release stays specific to the project, because the project writes its own recipe. The plugin holds only the conversation and the engine (task 0013). |
 
 ## 5. Open questions
 

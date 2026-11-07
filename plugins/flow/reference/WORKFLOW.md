@@ -38,6 +38,7 @@ These skills help outside the loop:
 | `/flow:whats-next` | Shows where the project stands, and recommends a next step. Read-only. |
 | `/flow:tutorial` | Explains the project, the workflow, or both. |
 | `/flow:roadmap` | Turns client requests into a roadmap of milestones and cards (section 5.9). |
+| `/flow:release` | Makes a release by the recipe of the project. The first run writes the recipe (section 13). |
 
 A small fix does not need the loop. An example is a one-line change. The developer makes it by hand, on the branch `fix/<slug>`, and opens a pull request into the base branch. The branch guard still applies (section 9).
 
@@ -405,3 +406,46 @@ Rules:
 | `/flow:build` | Copies the entry to the changelog in the last part, and fills in the task ID. |
 
 The agent never invents an entry. When the work changes what the entry says, the build records a deviation and updates the entry in the brief first.
+
+## 13. Releases
+
+How a project releases is specific to the project. So the project writes its own recipe, and `/flow:release` follows it.
+
+### 13.1 The setup
+
+1. The first run of `/flow:release` finds no recipe. The recipe is missing when the config line `Release` under "Records" is `none`, absent, or names a file that does not exist.
+2. The skill then talks the release through with the developer, like `/flow:discuss`. It gives guidance per topic. The developer decides every choice.
+3. The skill writes the recipe to `docs/workflow/RELEASE.md`, from the template `templates/RELEASE.md`. It sets the config line `Release: docs/workflow/RELEASE.md`.
+4. The skill commits on the branch `feature/release-setup`, and opens a pull request into the base branch. The first release runs after the merge.
+5. `/flow:release setup` starts the conversation again from the current recipe. It uses the same branch and pull request.
+
+`/flow:adopt` does not ask about releases. It writes `Release: none` in the config.
+
+### 13.2 The recipe
+
+The recipe has these sections. Each section can say "none", and each can hold free text of the developer.
+
+| Section | Holds |
+|---------|-------|
+| Version scheme | SemVer, CalVer, none, or a rule in free text. |
+| Version files | The files that hold the version number. |
+| Changelog | Whether the release dates the `Unreleased` section. |
+| Branch and pull request | A release branch, a tag on the base branch, or a pull request into a release target branch. |
+| Tag | The tag format, and whether the tag is annotated. |
+| Extra steps | The steps after the tag, such as a host release or a publish command. |
+| Stops | The steps where a run waits for approval. |
+
+### 13.3 The run
+
+1. A run checks first: a clean working tree, the base branch equal to `origin`, the branch guard on, and the checks of the recipe. It stops when a check fails.
+2. The run follows the steps of the recipe, in order.
+3. When a step fails, the run stops and reports. It never runs a failed publish step again on its own.
+4. The summary names the version number, the pull request link and the tag.
+
+### 13.4 Stops
+
+The recipe decides where a run waits for approval. The setup always asks about the stops. It recommends a stop before each step that cannot be undone, such as a tag push or a publish command.
+
+### 13.5 The branch guard
+
+The branch guard stays in every recipe (section 9). A run never commits on a protected branch, and never pushes to one. A release reaches a protected branch only through a pull request. A recipe can release into a branch that is not protected, for example `main` next to the base branch `develop`. The setup then adds that branch to `PROTECTED` in both hooks.
