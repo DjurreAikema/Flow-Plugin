@@ -52,6 +52,17 @@ Run `/flow:adopt` again later to review the setup with the full conversation.
 
 Then run `/flow:tutorial` to learn the workflow, or `/flow:discuss <topic>` to start.
 
+## Commands
+
+| Command | What it does |
+|---------|--------------|
+| `/flow:adopt` | Sets up the workflow in a project. It writes the config and the agent rules through a pull request. Run it once, or again to review the setup. |
+| `/flow:discuss <topic>` | Talks a feature through with you, and writes a brief. You then build it now or put it in the backlog. Start every task here. |
+| `/flow:build <brief folder>` | Builds a brief on autopilot, in a new session, and opens the pull request. Use `docs/tasks/_new` after a discussion, or `docs/tasks/_backlog/<slug>` for a backlog brief. |
+| `/flow:roadmap` | Turns client requests into milestones and cards, or adds new requests to the roadmap. |
+| `/flow:whats-next` | Shows where the project stands, and recommends the next step. It changes nothing. Say "details" for more. |
+| `/flow:tutorial` | Explains the project, the workflow or both, step by step. It can do a dry run on a toy task. |
+
 ## Documentation
 
 | Document | Holds |
