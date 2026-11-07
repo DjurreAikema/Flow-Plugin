@@ -386,7 +386,8 @@ def next_message(text, setup, last_command, posted=False, developer=None):
     if "▶" in line:  # ▶️
         if last_command and last_command.startswith("/flow:build"):
             return None, "finished"
-        m = re.search(r"`(/flow:[^`]+)`", line) or re.search(r"(/flow:\S.*)$", line)
+        # Without backticks, the command ends at a comma: "/flow:build x, in a new session".
+        m = re.search(r"`(/flow:[^`]+)`", line) or re.search(r"(/flow:[^\s,]+(?:\s+[^\s,]+)*)", line)
         if m:
             return m.group(1).strip(), "command"
     return None, "stop"
