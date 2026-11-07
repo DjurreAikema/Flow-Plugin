@@ -79,4 +79,4 @@ The same fallback applies when the host tool fails and its guide has no other ro
 
 A project that uses Git Flow sets its base branch to `develop`. The core needs no git flow tool: a feature branch from `develop` and a pull request into `develop` are plain git.
 
-A release into `main` is project work. The project describes it in its project rules, or builds a project skill for it.
+A release into `main` follows the recipe of `/flow:release`. The recipe names `main` as the release target, and the setup adds `main` to `PROTECTED`.
