@@ -39,6 +39,7 @@ These skills help outside the loop:
 | `/flow:tutorial` | Explains the project, the workflow, or both. |
 | `/flow:roadmap` | Turns client requests into a roadmap of milestones and cards (section 5.9). |
 | `/flow:release` | Makes a release by the recipe of the project. The first run writes the recipe (section 13). |
+| `/flow:test-plan` | Writes the test plan of the project in a conversation, through a pull request (section 7). |
 
 A small fix does not need the loop. An example is a one-line change. The developer makes it by hand, on the branch `fix/<slug>`, and opens a pull request into the base branch. The branch guard still applies (section 9).
 
@@ -48,7 +49,7 @@ A small fix does not need the loop. An example is a one-line change. The develop
 2. **Respect the project scope.** When the config names a scope document, build only what it allows. Put other ideas in the backlog or under "Later" in that document.
 3. **Explore once.** `/flow:discuss` reads the code and writes the map. The build reads the map, not the whole project.
 4. **Agree first, then build.** The brief is the agreement. The build asks no approval.
-5. **Test only what matters.** Follow the section "Testing" of the config (section 7).
+5. **Test only what matters.** Follow the test plan of the project (section 7).
 6. **Record only what the diff cannot show.** The brief records the decisions. The build records only the deviations.
 7. **Put bad news first.** A failed check or a deviation is the first item in every summary.
 8. **The repository is the only source of truth.** A fresh session knows only what the repository tells it.
@@ -74,8 +75,8 @@ A small fix does not need the loop. An example is a one-line change. The develop
 | Deviation | A difference between the brief and the work. | drift |
 | Outcome | The section that the build adds to the brief when the task has deviations. | result, log |
 | Verify command | The command of the config that answers: does the project build and do the tests pass? | build script |
-| Test rule | The setting "Rule" of the config. It sets which code gets automated tests (section 7.1). | testing policy |
-| Test type | A kind of automated test that the config names, for example unit (section 7.2). | test level |
+| Test plan | The file `docs/workflow/TESTING.md`. It sets which code gets automated tests, and how (section 7.1). | testing policy, test rule |
+| Test type | A kind of automated test that the test plan names, for example unit (section 7.2). | test level |
 | Coverage command | The command of the config that prints the coverage of the changed lines (section 7.4). | coverage gate |
 | Base branch | The branch that pull requests merge into. The config sets it. | trunk (alone) |
 | Feature branch | The branch of one task: `feature/<task ID>`. | task branch |
@@ -92,6 +93,7 @@ The plugin holds the skills, this guide and the templates. A project holds only 
 ```
 AGENTS.md                      The agent rules of the project. Short and binding.
 docs/workflow/CONFIG.md        The choices of the project.
+docs/workflow/TESTING.md       The test plan (section 7).
 docs/tasks/
   _new/BRIEF.md                A brief between /flow:discuss and /flow:build. Never committed.
   <task ID>/BRIEF.md           The brief of the active task. It exists only on its feature branch.
@@ -178,7 +180,7 @@ The brief is the only plan of a task. `/flow:discuss` writes it from `templates/
 | Out of scope | What the task must not do. |
 | Map | The files to read and change, with the functions and the patterns to follow. |
 | Parts | The parts of the work, in order. One commit each. |
-| Tests | The automated tests, by the section "Testing" of the config. |
+| Tests | The automated tests, by the test plan. |
 | Human checklist | The checks that are cheap for a human and expensive for an agent (section 8). |
 | Changelog | The entry of the task (section 12). |
 | Open questions | Questions that the discussion did not settle. The build does not start while one is open. |
@@ -228,40 +230,44 @@ Every other difference between the brief and the work is a deviation. The build 
 
 ## 7. Testing
 
-The section "Testing" of the config sets which code gets automated tests, and of which type. The command "Coverage" of the config reports how much of the changed code the tests run.
+The test plan `docs/workflow/TESTING.md` sets which code gets automated tests, of which type, and how the tests are written. The line `Test plan` under "Testing" of the config names it. The command "Coverage" of the config reports how much of the changed code the tests run.
 
-### 7.1 The test rule
+### 7.1 The test plan
 
-"Rule" sets which code gets a test:
+`/flow:test-plan` writes the plan in a conversation with the developer, through a pull request. Each later run starts from the current plan. `/flow:adopt` writes a first plan from a preset, so every project has a plan.
 
-| Rule | Which code gets a test |
-|------|------------------------|
+The plan has these sections: which code gets tests, the test types, how tests are written, tested by hand, old code, and notes. Each section can say "none", and can hold free text.
+
+"Which code gets tests" starts from a preset:
+
+| Preset | Which code gets a test |
+|--------|------------------------|
 | `none` | No code. The project has no automated tests. |
 | `critical` | Only high-impact logic. Logic is high-impact when it can break without a visible sign, when many parts depend on it, or when a bug ruins the whole result. |
 | `logic` | Every function with a branch, a calculation or a rule. Not plain data, wiring or layout. |
 
-Keep tests small. Test the rules, not every value.
+The developer then changes, adds or narrows the rules, for example per folder or per area. Keep tests small. Test the rules, not every value.
 
 ### 7.2 Test types
 
-"Types" lists the test types of the project. Each type has a name, a one-line meaning and an optional command. The project picks the names. Example:
+The section "Test types" of the plan lists the test types of the project. Each type has a name, a one-line meaning and an optional command. The project picks the names. Example:
 
 ```markdown
-## Testing
-- Rule: critical
-- Types:
-  - unit: one function or class, without files, network or a database. `npm test -- unit`
-  - integration: code that talks to the database or an external service. `npm test -- integration`
+## Test types
+- unit: one function or class, without files, network or a database. `npm test -- unit`
+- integration: code that talks to the database or an external service. `npm test -- integration`
 ```
 
-With the rule `none`, "Types" is `none`.
+With the preset `none` and no other rules, the types are none.
 
 ### 7.3 Planning tests
 
-1. `/flow:discuss` plans a test only for code that falls under the rule.
-2. Each test in the brief names the code it covers, its type from the config, and a reason that names the rule.
-3. Old code: the work changes a function that has no test, and the function falls under the rule. `/flow:discuss` asks the developer whether to add a test for that function. The test covers only the changed function.
-4. `/flow:build` writes only the tests of the brief.
+1. Only `/flow:discuss` reads the plan. It plans a test only for code that falls under a rule of the plan.
+2. Each test in the brief names the code it covers, a type of the plan, and a reason that names a rule of the plan.
+3. The brief holds the conventions of the plan that each test needs. When a task needs the full conventions, the map names `docs/workflow/TESTING.md`.
+4. Old code: the work changes a function that has no test, and the function falls under a rule. `/flow:discuss` follows the old-code policy of the plan: ask the developer, always add a test, or never. The default is to ask. The test covers only the changed function.
+5. Each item of "Tested by hand" that the work touches becomes an item of the human checklist.
+6. `/flow:build` does not read the plan. It writes only the tests of the brief.
 
 ### 7.4 Coverage
 

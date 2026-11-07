@@ -61,6 +61,7 @@ Then run `/flow:tutorial` to learn the workflow, or `/flow:discuss <topic>` to s
 | `/flow:build <brief folder>` | Builds a brief on autopilot, in a new session, and opens the pull request. Use `docs/tasks/_new` after a discussion, or `docs/tasks/_backlog/<slug>` for a backlog brief. |
 | `/flow:roadmap` | Turns client requests into milestones and cards, or adds new requests to the roadmap. |
 | `/flow:release` | Makes a release in the way of the project. The first run talks the release through, and writes a recipe through a pull request. Later runs follow the recipe. |
+| `/flow:test-plan` | Sets up the tests of the project in a conversation, and writes the test plan through a pull request. Run it again to change the plan. |
 | `/flow:whats-next` | Shows where the project stands, and recommends the next step. It changes nothing. Say "details" for more. |
 | `/flow:tutorial` | Explains the project, the workflow or both, step by step. It can do a dry run on a toy task. |
 
