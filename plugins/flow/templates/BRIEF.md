@@ -28,9 +28,10 @@ The parts of the work, in order. The build makes one commit per part. Each part 
 1. <Part title>: <what it builds>. Files: `<path>`, `<path>`.
 
 ## Tests
-The automated tests of the task, by the section "Testing" of the config. Or "none".
+The automated tests of the task, by the test plan of the config. Or "none".
 
-- <the code that the test covers> (<test type>): <the reason, which names the test rule>
+- <the code that the test covers> (<test type of the plan>): <the reason, which names a rule of the plan>
+  <the conventions of the plan that the test needs, or none>
 
 ## Human checklist
 Checks that are cheap for a human and expensive for an agent: look at a screen, try a device, judge a text, ask a person. The pull request shows them as checkboxes. Or "none".

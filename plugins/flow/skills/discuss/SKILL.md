@@ -49,16 +49,14 @@ Leave out "Directions" when the question is truly open.
 
 ## Tests
 
-Plan tests only by the section "Testing" of the config:
+Plan tests only by the test plan of the config: the line `Test plan` under "Testing". Read the plan once, when the topic touches code.
 
-| Rule | Which code gets a test |
-|------|------------------------|
-| `none` | No code. |
-| `critical` | Only logic that can break without a visible sign, that many parts depend on, or that ruins the whole result. |
-| `logic` | Every function with a branch, a calculation or a rule. Not plain data, wiring or layout. |
-
-1. Name for each test the code that it covers, a type of the config, and a reason that names the rule.
-2. The work can change a function that has no test, under the rule. Ask the developer whether to add a test for that function only.
+1. Plan a test only for code that falls under a rule of the plan.
+2. Name for each test the code that it covers, a type of the plan, and a reason that names a rule of the plan.
+3. Copy into the brief the conventions of the plan that each test needs: the location, the names, the mocks, the fixtures and the test data. When a task needs the full conventions, name `docs/workflow/TESTING.md` in the map.
+4. The work can change a function that has no test, under a rule of the plan. Follow the old-code policy of the plan. With the policy "ask", ask the developer whether to add a test for that function only.
+5. Turn each item of "Tested by hand" of the plan that the work touches into an item of the human checklist.
+6. Without a plan, plan no tests. Name `/flow:test-plan` once, in the summary of the brief.
 
 ## The brief
 

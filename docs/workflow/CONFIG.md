@@ -22,8 +22,7 @@ The choices of this repository for the `flow` workflow. This repository holds th
 - Coverage: none
 
 ## Testing
-- Rule: none. The verify script is the check.
-- Types: none
+- Test plan: docs/workflow/TESTING.md
 
 ## Docs
 - Scope: `docs/DESIGN.md` section 2

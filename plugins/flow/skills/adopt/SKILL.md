@@ -45,7 +45,7 @@ Found in the repository
    Design docs      <the design documents that Inspect found, or none>
 
 Testing
-   Rule             <critical or none>          <the test framework that Inspect found, or "no test framework">
+   Test preset      <critical or none>          <the test framework that Inspect found, or "no test framework">
    Types            <each type with its command, or none>   <source>
    Coverage         <command or none>          <source>
 
@@ -59,7 +59,8 @@ Branch guard
 
 📁 Files I will write
    + docs/workflow/CONFIG.md
-   <+ or ~> AGENTS.md, CLAUDE.md               (the files of "Write the setup" step 4)
+   + docs/workflow/TESTING.md
+   <+ or ~> AGENTS.md, CLAUDE.md               (the files of "Write the setup" step 5)
    + docs/tasks/_backlog/README.md
    + docs/tasks/_archive/README.md
    + tools/git-hooks/pre-commit
@@ -73,7 +74,7 @@ Rules:
 
 1. Show a value from the repository with its source, for example the file or the command.
 2. When Inspect finds no verify command, suggest `git diff --check`. It catches whitespace errors and leftover conflict markers. Ask for a better command.
-3. Testing (workflow guide section 7): set "Rule" to `critical` when Inspect finds a test framework, and to `none` when it finds none. Name a type for each kind of test that the project has, with its command. With the rule `none`, "Types" is `none`. Without a coverage tool, "Coverage" is `none`.
+3. Testing (workflow guide section 7): set the test preset to `critical` when Inspect finds a test framework, and to `none` when it finds none. Name a type for each kind of test that the project has, with its command. With the preset `none`, "Types" is `none`. Without a coverage tool, "Coverage" is `none`. Tell the developer that `/flow:test-plan` gives more control over the test plan.
 4. When `core.hooksPath` is set already, show its value in the block with ⚠️. Add a question about the branch guard in the question form (workflow guide section 11.4), above the 👉 line. Never overwrite the setting without an answer.
 
    ```
@@ -118,7 +119,7 @@ The developer leads. You explain, inform and recommend. You do not steer.
    - the writing style
    - the verify command
    - the docs that the agent must read
-   - the test rule, the test types and the coverage command
+   - the test preset, the test types and the coverage command
    - the project rules
    - the branch guard, only when `core.hooksPath` is set already
 7. Do not ask about a setting that the repository answers clearly. State the answer as a fact in the report. The developer can correct it.
@@ -152,7 +153,7 @@ Use these facts in your directions and your view:
 - **Roadmap:** `none` by default. A project that plans client requests over months runs `/flow:roadmap` after the setup. It writes `docs/roadmap/` and sets this setting. An existing roadmap document of the project stays a design document: name it under "Design".
 - **Releases:** the setup does not ask about releases. `/flow:release` sets up the release of the project later, with its own conversation.
 - **Project-specific features:** a tracker, patch notes and similar records are not part of the plugin. A project adds them as project rules, or builds a project skill for them with a task.
-- **Testing:** `none` writes no automated tests. `critical` tests only high-impact logic, and suits most projects with tests. `logic` tests every function with a branch, a calculation or a rule, at a higher cost per task. The project names its own test types, because they differ per stack. The coverage command reports the changed lines only. It never blocks a task.
+- **Testing:** the setup writes a first test plan from a preset. `none` writes no automated tests. `critical` tests only high-impact logic, and suits most projects with tests. `logic` tests every function with a branch, a calculation or a rule, at a higher cost per task. The project names its own test types, because they differ per stack. The coverage command reports the changed lines only. It never blocks a task. For rules per area, test conventions and an old-code policy, the developer runs `/flow:test-plan` after the setup.
 - **Writing style:** `ste` makes the workflow documents short and exact. A team that does not want it picks `none`.
 - **Existing agent rules:** when `CLAUDE.md` or `AGENTS.md` exists, add the workflow rules to it. Never remove the rules that are there.
 
@@ -161,12 +162,13 @@ Use these facts in your directions and your view:
 1. Show a short summary of every setting and every file that you will write or change. End the message with `👉 Reply "go" to write this setup through a pull request, or name the changes.` Wait for the reply. After the quick setup, skip this step: its block is the summary.
 2. Update the base branch from `origin`. Create the branch `feature/adopt-flow` with the command of `${CLAUDE_PLUGIN_ROOT}/reference/GIT.md`.
 3. Write `docs/workflow/CONFIG.md` from `${CLAUDE_PLUGIN_ROOT}/templates/CONFIG.md`. Remove the comments of settings that do not apply. Write `Release: none` under "Records".
-4. Write `AGENTS.md` from `${CLAUDE_PLUGIN_ROOT}/templates/AGENTS.md`. When `AGENTS.md` exists, add a "Workflow" section instead. When `CLAUDE.md` exists without `AGENTS.md`, add the section to `CLAUDE.md`. When neither exists, also write `CLAUDE.md` with the one line `@AGENTS.md`.
-5. Create `docs/tasks/_backlog/` and `docs/tasks/_archive/`, each with a `README.md` of one or two sentences, so that git keeps the folders.
-6. With the changelog `direct`: when no changelog file exists, create it with an empty `Unreleased` section.
-7. Install the branch guard by `${CLAUDE_PLUGIN_ROOT}/reference/GIT.md`, "Branch guard". Copy `${CLAUDE_PLUGIN_ROOT}/templates/git-hooks/` to `tools/git-hooks/`, or to the existing hooks folder when the developer chose it. Set `PROTECTED` in both hooks to the base branch. Make both hooks executable. Name the setup command in the config. Then run the setup command in this clone.
-8. Commit: `adopt: set up the flow workflow`. Push the branch. Open the pull request into the base branch by `${CLAUDE_PLUGIN_ROOT}/reference/GIT.md`, "Open a pull request". The description holds the summary of step 1.
-9. Tell the developer how the team installs the plugin. Add the marketplace and install `flow` at the project scope. The project settings then enable it for everyone. Tell the developer that each clone runs the setup command once.
+4. Write `docs/workflow/TESTING.md` from `${CLAUDE_PLUGIN_ROOT}/templates/TESTING.md`. Set the preset, and list the found types with their commands. Write "none" in the other sections, and the old-code policy "ask the developer".
+5. Write `AGENTS.md` from `${CLAUDE_PLUGIN_ROOT}/templates/AGENTS.md`. When `AGENTS.md` exists, add a "Workflow" section instead. When `CLAUDE.md` exists without `AGENTS.md`, add the section to `CLAUDE.md`. When neither exists, also write `CLAUDE.md` with the one line `@AGENTS.md`.
+6. Create `docs/tasks/_backlog/` and `docs/tasks/_archive/`, each with a `README.md` of one or two sentences, so that git keeps the folders.
+7. With the changelog `direct`: when no changelog file exists, create it with an empty `Unreleased` section.
+8. Install the branch guard by `${CLAUDE_PLUGIN_ROOT}/reference/GIT.md`, "Branch guard". Copy `${CLAUDE_PLUGIN_ROOT}/templates/git-hooks/` to `tools/git-hooks/`, or to the existing hooks folder when the developer chose it. Set `PROTECTED` in both hooks to the base branch. Make both hooks executable. Name the setup command in the config. Then run the setup command in this clone.
+9. Commit: `adopt: set up the flow workflow`. Push the branch. Open the pull request into the base branch by `${CLAUDE_PLUGIN_ROOT}/reference/GIT.md`, "Open a pull request". The description holds the summary of step 1.
+10. Tell the developer how the team installs the plugin. Add the marketplace and install `flow` at the project scope. The project settings then enable it for everyone. Tell the developer that each clone runs the setup command once.
 
 ## Summary
 
