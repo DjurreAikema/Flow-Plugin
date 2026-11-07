@@ -32,5 +32,37 @@
       }
     ],
     "max_messages": 10
+  },
+  "lean-raw": {
+    "plugin": false,
+    "remove": [
+      "AGENTS.md",
+      "docs/workflow"
+    ],
+    "files": [
+      {
+        "path": "CLAUDE.md",
+        "source": "setups/lean/CLAUDE.md"
+      }
+    ],
+    "start": "{request}",
+    "developer": "haiku",
+    "replies": [],
+    "max_messages": 20
+  },
+  "flow": {
+    "plugin": true,
+    "remove": [],
+    "files": [
+      {
+        "path": "CLAUDE.md",
+        "text": "@AGENTS.md"
+      }
+    ],
+    "start": "/flow:discuss {request}",
+    "developer": "haiku",
+    "fresh_session": true,
+    "replies": [],
+    "max_messages": 20
   }
 }

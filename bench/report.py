@@ -6,8 +6,12 @@ import json
 import os
 import statistics
 
+from run import TOKEN_WEIGHTS
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-SETUPS = ["lean", "flow-thin"]
+SETUPS = ["lean", "flow-thin", "lean-raw", "flow"]
+# The setup that each setup compares its tokens with: the plain setup of its feature.
+BASELINE = {"lean": "lean", "flow-thin": "lean", "lean-raw": "lean-raw", "flow": "lean-raw"}
 MIN_RUNS = 3
 
 
@@ -35,6 +39,14 @@ def total(tokens):
     return sum(sum(v for v in u.values() if isinstance(v, (int, float))) for u in tokens.values())
 
 
+def weighted(tokens):
+    return round(sum(u.get(kind, 0) * w for u in tokens.values() for kind, w in TOKEN_WEIGHTS.items()))
+
+
+def yes_no(value):
+    return None if value is None else int(bool(value))
+
+
 def short_model(name):
     for family in ("opus", "sonnet", "haiku"):
         if family in name:
@@ -55,8 +67,12 @@ def figures(r):
     cost, q, w = r.get("cost") or {}, r.get("quality") or {}, r.get("workflow") or {}
     tokens = cost.get("tokens_by_model") or {}
     parts = w.get("parts")
+    dev = (cost.get("developer") or {}).get("tokens_by_model")
+    exports = q.get("extra_exports")
     return {
         "total tokens": total(tokens),
+        "weighted tokens": cost.get("weighted_tokens", weighted(tokens)),
+        "developer tokens": None if dev is None else total(dev),
         "output tokens": sum(u.get("output", 0) for u in tokens.values()),
         "turns": cost.get("turns"),
         "wall time (s)": cost.get("wall_seconds"),
@@ -66,6 +82,9 @@ def figures(r):
         "hidden tests passed": q.get("hidden_passed"),
         "verify passed (1 = yes)": None if q.get("verify_passed") is None else int(bool(q["verify_passed"])),
         "files outside allowed": len(q.get("files_outside_allowed") or []),
+        "traps caught": q.get("traps_caught"),
+        "extra exports": None if exports is None else len(exports),
+        "test rule followed (1 = yes)": yes_no(q.get("test_rule_followed")),
         "commits": w.get("commits"),
         "parts": parts,
         "last-line errors": w.get("last_line_violations"),
@@ -79,9 +98,9 @@ def cell(v):
 
 
 def run_table(runs):
-    head = ["Setup", "Run ID", "Tokens per model", "Turns", "Wall time (s)", "Hidden tests",
-            "Verify", "Files outside", "Commits", "Parts", "Last-line errors",
-            "Questions", "Step builders"]
+    head = ["Setup", "Run ID", "Tokens per model", "Weighted", "Developer", "Turns",
+            "Wall time (s)", "Hidden tests", "Traps", "Extra exports", "Test rule", "Verify",
+            "Files outside", "Commits", "Parts", "Last-line errors", "Questions", "Step builders"]
     rows = []
     for r in runs:
         f, q = figures(r), r.get("quality") or {}
@@ -90,8 +109,12 @@ def run_table(runs):
                               for m, u in sorted(tokens.items())) or "-"
         hidden = "-" if q.get("hidden_total") is None else "%s/%s" % (q.get("hidden_passed"), q["hidden_total"])
         verify = "-" if q.get("verify_passed") is None else ("pass" if q["verify_passed"] else "fail")
-        rows.append([r.get("setup"), r.get("run_id"), per_model, cell(f["turns"]),
-                     cell(f["wall time (s)"]), hidden, verify, cell(f["files outside allowed"]),
+        traps = "-" if q.get("traps_total") is None else "%s of %s" % (q.get("traps_caught"), q["traps_total"])
+        rule = "-" if q.get("test_rule_followed") is None else ("yes" if q["test_rule_followed"] else "no")
+        dev = "-" if f["developer tokens"] is None else fmt_tokens(f["developer tokens"])
+        rows.append([r.get("setup"), r.get("run_id"), per_model, fmt_tokens(f["weighted tokens"]), dev,
+                     cell(f["turns"]), cell(f["wall time (s)"]), hidden, traps,
+                     cell(f["extra exports"]), rule, verify, cell(f["files outside allowed"]),
                      cell(f["commits"]), cell(f["parts"]), cell(f["last-line errors"]),
                      cell(f["questions"]), cell(f["step builders"])])
     return table(head, rows)
@@ -124,12 +147,21 @@ def median(values):
 def setup_table(by_setup):
     names = [s for s in SETUPS if s in by_setup] + sorted(s for s in by_setup if s not in SETUPS)
     figs = {s: [figures(r) for r in by_setup[s]] for s in names}
+    traps_total = {s: max((r.get("quality") or {}).get("traps_total") or 0 for r in by_setup[s])
+                   for s in names}
     rows = []
-    for key in next(iter(figs.values())) [0].keys() if names else []:
-        rows.append([key] + [spread([f[key] for f in figs[s]]) for s in names])
-    base = median([f["total tokens"] for f in figs.get("lean", [])])
+    for key in next(iter(figs.values()))[0].keys() if names else []:
+        cells = []
+        for s in names:
+            c = spread([f[key] for f in figs[s]])
+            if key == "traps caught" and traps_total[s] and c != "-":
+                c = c.replace(" (", " of %d (" % traps_total[s], 1)
+            cells.append(c)
+        rows.append([key] + cells)
+    # Each setup against the plain setup of its feature: lean for holds, lean-raw for closing.
     ratio = []
     for s in names:
+        base = median([f["total tokens"] for f in figs.get(BASELINE.get(s, "lean"), [])])
         m = median([f["total tokens"] for f in figs[s]])
         ratio.append("n/a" if not base or m is None else "%.1fx" % (m / base))
     rows.insert(1, ["total tokens against lean"] + ratio)
@@ -155,7 +187,9 @@ def main():
     print("## Runs\n")
     print(run_table(runs))
     print("\n## Setups\n")
-    print("Each cell is `median (minimum to maximum)`.\n")
+    print("Each cell is `median (minimum to maximum)`. The row \"total tokens against lean\" "
+          "compares `flow-thin` with `lean`, and `lean-raw` and `flow` with `lean-raw`. "
+          "\"total tokens\" leaves out the simulated developer.\n")
     print(setup_table(by_setup))
     short = [s for s in SETUPS if len(by_setup.get(s, [])) < MIN_RUNS]
     if short:
